@@ -1,0 +1,80 @@
+[
+  {
+    "filename": "1C26TAP_00006732_0317333953.pdf",
+    "text_length": 1935,
+    "text_sample": "CÔNG TY CỔ PHẦN QUẢNG CÁO CỔNG VIỆT NAM\nMã số thuế (Tax code) : 0313547231\nĐịa chỉ (Address) : Tầng 8, 402 Nguyễn Thị Minh Khai, Phường Bàn Cờ, TP.HCM, Việt Nam\nĐiện thoại (Tel) : 18000098\nSố tài khoản (Bank account) : 66852888203 - Ngân hàng Tiên Phong Bank\nHọ tên người mua hàng (Buyer) :\nTên đơn v",
+    "extracted": {
+      "supplier_name": "CÔNG TY CỔ PHẦN QUẢNG CÁO CỔNG VIỆT NAM",
+      "supplier_tax_id": "0313547231",
+      "invoice_number": "00006732",
+      "invoice_date": "06/07/2026",
+      "currency": "VND",
+      "subtotal": 7363636.36,
+      "tax_amount": 736363.64,
+      "total_amount": 8100000.0,
+      "items": [
+        {
+          "description": "Chi phí theo hóa đơn 00006732",
+          "quantity": 1,
+          "unit_price": 7363636.36,
+          "amount": 7363636.36
+        }
+      ]
+    },
+    "warnings": [
+      "Hệ thống đã tự động trích xuất bằng bộ đọc hóa đơn thông minh."
+    ]
+  },
+  {
+    "filename": "1C26TAP_00007305_0317333953.pdf",
+    "text_length": 1992,
+    "text_sample": "CÔNG TY CỔ PHẦN QUẢNG CÁO CỔNG VIỆT NAM\nMã số thuế (Tax code) : 0313547231\nĐịa chỉ (Address) : Tầng 8, 402 Nguyễn Thị Minh Khai, Phường Bàn Cờ, TP.HCM, Việt Nam\nĐiện thoại (Tel) : 18000098\nSố tài khoản (Bank account) : 66852888203 - Ngân hàng Tiên Phong Bank\nHọ tên người mua hàng (Buyer) :\nTên đơn v",
+    "extracted": {
+      "supplier_name": "CÔNG TY CỔ PHẦN QUẢNG CÁO CỔNG VIỆT NAM",
+      "supplier_tax_id": "0313547231",
+      "invoice_number": "00007305",
+      "invoice_date": "21/07/2026",
+      "currency": "VND",
+      "subtotal": 10309090.91,
+      "tax_amount": 1030909.09,
+      "total_amount": 11340000.0,
+      "items": [
+        {
+          "description": "Chi phí theo hóa đơn 00007305",
+          "quantity": 1,
+          "unit_price": 10309090.91,
+          "amount": 10309090.91
+        }
+      ]
+    },
+    "warnings": [
+      "Hệ thống đã tự động trích xuất bằng bộ đọc hóa đơn thông minh."
+    ]
+  },
+  {
+    "filename": "Hóa đơn-357073.pdf",
+    "text_length": 892,
+    "text_sample": "CHưA THANH TOáN\n--\nCông ty cổ phần AZDIGI\n768 Nguyễn Thị Định, phường Cát Lái, \bThành phố Hồ Chí Minh.\n- Hotline kỹ thuật: 028 888 24768\n- Hotline thanh toán/kế toán: 028 888 14768\n- Email: support@azdigi.com\nKhiếu nại/Góp ý: 0938 741 888\nMã Số Thuế: 0313755538\nHóa đơn #357073\nNgày tạo hóa đơn: 21/0",
+    "extracted": {
+      "supplier_name": "Công ty Cổ phần AZDIGI",
+      "supplier_tax_id": "0313755538",
+      "invoice_number": "357073",
+      "invoice_date": "21/07/2025",
+      "currency": "VND",
+      "subtotal": 2647240.0,
+      "tax_amount": 264724.0,
+      "total_amount": 2911964.0,
+      "items": [
+        {
+          "description": "Chi phí theo hóa đơn 357073",
+          "quantity": 1,
+          "unit_price": 2647240.0,
+          "amount": 2647240.0
+        }
+      ]
+    },
+    "warnings": [
+      "Hệ thống đã tự động trích xuất bằng bộ đọc hóa đơn thông minh."
+    ]
+  }
+]

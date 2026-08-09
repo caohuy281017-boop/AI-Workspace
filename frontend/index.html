@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Workspace — File-First Business AI Platform</title>
+  <meta name="description" content="AI-powered batch invoice processing, document translation, and meeting notes for business teams.">
+  <link rel="stylesheet" href="styles/app.css">
+</head>
+<body>
+
+<!-- ══════════════════════════════════════
+     SIDEBAR
+══════════════════════════════════════ -->
+<aside class="sidebar">
+  <div class="sidebar-brand">
+    <div class="brand-logo">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+    </div>
+    <div>
+      <div class="brand-name">AI Workspace</div>
+      <div class="brand-sub">Business AI Platform</div>
+    </div>
+  </div>
+
+  <!-- Search trigger -->
+  <div class="sidebar-search" id="search-trigger">
+    <svg class="s-icon" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    <span>Tìm kiếm công cụ...</span>
+    <kbd>Ctrl K</kbd>
+  </div>
+
+  <!-- Navigation -->
+  <nav class="sidebar-nav">
+    <!-- Home -->
+    <div class="nav-group">
+      <a class="nav-item active" data-view="hub" id="nav-hub">
+        <span class="nav-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9,22 9,12 15,12 15,22"/></svg></span>
+        Trang chủ
+      </a>
+    </div>
+
+    <!-- Kế toán -->
+    <div class="nav-group">
+      <div class="nav-group-label">Kế Toán & Tài Chính</div>
+      <a class="nav-item" data-view="accounting" id="nav-accounting">
+        <span class="nav-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10,9 9,9 8,9"/></svg></span>
+        Xử lý lô Hóa đơn
+        <span class="nav-badge count" id="badge-review">2</span>
+      </a>
+    </div>
+
+    <!-- Tài liệu -->
+    <div class="nav-group">
+      <div class="nav-group-label">Tài Liệu</div>
+      <a class="nav-item disabled" data-view="translator" id="nav-translator">
+        <span class="nav-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></span>
+        Dịch tài liệu
+        <span class="nav-badge soon">Beta</span>
+      </a>
+    </div>
+
+    <!-- Cuộc họp -->
+    <div class="nav-group">
+      <div class="nav-group-label">Cuộc Họp</div>
+      <a class="nav-item disabled" data-view="meeting" id="nav-meeting">
+        <span class="nav-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>
+        Biên bản & Tóm tắt
+        <span class="nav-badge soon">Soon</span>
+      </a>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Settings -->
+    <div class="nav-group">
+      <a class="nav-item" data-view="settings" id="nav-settings">
+        <span class="nav-icon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>
+        Cấu hình AI Engine
+      </a>
+    </div>
+  </nav>
+
+  <div class="sidebar-footer">
+    <div class="status-dot"></div>
+    <span>Gemini Flash · Sẵn sàng</span>
+  </div>
+</aside>
+
+<!-- ══════════════════════════════════════
+     MAIN AREA
+══════════════════════════════════════ -->
+<div class="main">
+
+  <!-- Top bar -->
+  <div class="topbar" id="topbar">
+    <div class="topbar-breadcrumb" id="breadcrumb">
+      <span>AI Workspace</span>
+      <span class="sep">/</span>
+      <span class="cur">Trang chủ</span>
+    </div>
+    <div class="topbar-spacer"></div>
+
+    <button class="topbar-action" id="btn-help">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+      Tài liệu
+    </button>
+    <!-- Theme toggle -->
+    <button class="topbar-action" id="btn-theme" onclick="toggleTheme()" title="Chuyển giao diện sáng/tối">
+      <!-- Moon icon: shown in light mode (click to go dark) -->
+      <svg id="icon-dark" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+      <!-- Sun icon: shown in dark mode (click to go light) -->
+      <svg id="icon-light" xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" style="display:none"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+      <span id="theme-label">Tối</span>
+    </button>
+    <button class="topbar-action" onclick="openSearch()">
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      Tìm kiếm
+    </button>
+  </div>
+
+  <!-- ══════════ WORKSPACE ══════════ -->
+  <div class="workspace">
+
+    <!-- ─── VIEW: HUB ─── -->
+    <div class="view active" id="view-hub">
+      <div class="hub-header">
+        <h1>Chào mừng đến với <span class="text-brand">AI Workspace</span> 👋</h1>
+        <p>Chọn một ứng dụng AI bên dưới để bắt đầu xử lý tài liệu kinh doanh của bạn.</p>
+      </div>
+
+      <div class="app-grid">
+        <!-- App 1: Accounting Batch -->
+        <div class="app-card active-app" onclick="switchView('accounting')">
+          <div class="app-card-icon" style="background: var(--c-ok-bg);">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="1.75"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10,9 9,9 8,9"/></svg>
+          </div>
+          <div class="app-card-title">Xử lý lô Hóa đơn (Accounting Batch)</div>
+          <div class="app-card-desc">Tải lên lô file PDF/ảnh hóa đơn, AI trích xuất dữ liệu tự động, con người kiểm duyệt và xuất file Excel chuẩn kế toán.</div>
+          <div class="app-card-footer">
+            <span class="app-tag tag-ready">Sẵn sàng</span>
+            <span class="app-launch">Khởi chạy →</span>
+          </div>
+        </div>
+
+        <!-- App 2: Document Translator -->
+        <div class="app-card" style="--card-accent: rgba(59,130,246,.08);">
+          <div class="app-card-icon" style="background: var(--c-info-bg);">📄</div>
+          <div class="app-card-title">Dịch tài liệu (Document Translator)</div>
+          <div class="app-card-desc">Dịch file PDF, DOCX, PPTX giữ nguyên bố cục bảng biểu, tiêu đề và định dạng. So sánh song song tài liệu gốc và bản dịch.</div>
+          <div class="app-card-footer">
+            <span class="app-tag tag-beta">⚡ Beta</span>
+            <span class="app-launch" style="color: var(--c-info);">Sắp ra mắt →</span>
+          </div>
+        </div>
+
+        <!-- App 3: Meeting Notes -->
+        <div class="app-card" style="--card-accent: rgba(168,85,247,.08);">
+          <div class="app-card-icon" style="background: rgba(168,85,247,.12);">🎙️</div>
+          <div class="app-card-title">Biên bản Cuộc họp (Meeting Notes)</div>
+          <div class="app-card-desc">Tải lên file ghi âm/video cuộc họp (MP3, MP4). AI tạo transcript, tóm tắt và danh sách Action Items có thể chỉnh sửa.</div>
+          <div class="app-card-footer">
+            <span class="app-tag tag-coming">🔒 Sắp có</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Quick stats -->
+      <div class="section-title">Thống kê hệ thống <span>Hôm nay, 09/08/2026</span></div>
+      <div class="stats-row">
+        <div class="stat-box">
+          <div class="stat-icon">🧾</div>
+          <div>
+            <div class="stat-label">Hóa đơn đã xử lý</div>
+            <div class="stat-val text-brand">4</div>
+          </div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-icon">⏳</div>
+          <div>
+            <div class="stat-label">Chờ kiểm duyệt</div>
+            <div class="stat-val text-warn">2</div>
+          </div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-icon">✅</div>
+          <div>
+            <div class="stat-label">Đã phê duyệt</div>
+            <div class="stat-val">2</div>
+          </div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-icon">💰</div>
+          <div>
+            <div class="stat-label">Tổng tiền VND</div>
+            <div class="stat-val" style="font-size:1.1rem;">23.380.000 ₫</div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /view-hub -->
+
+    <!-- ─── VIEW: ACCOUNTING BATCH ─── -->
+    <div class="view" id="view-accounting">
+
+      <!-- Stats -->
+      <div class="stats-row" style="margin-bottom:20px;">
+        <div class="stat-box">
+          <div class="stat-icon">📑</div>
+          <div>
+            <div class="stat-label">Tổng hóa đơn</div>
+            <div class="stat-val text-brand" id="s-total">4</div>
+          </div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-icon">⏳</div>
+          <div>
+            <div class="stat-label">Cần soi duyệt</div>
+            <div class="stat-val text-warn" id="s-review">2</div>
+          </div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-icon">✅</div>
+          <div>
+            <div class="stat-label">Đã phê duyệt</div>
+            <div class="stat-val" id="s-approved">2</div>
+          </div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-icon">💰</div>
+          <div>
+            <div class="stat-label">Tổng tiền (VND)</div>
+            <div class="stat-val" style="font-size:1rem;" id="s-total-amount">23.380.000 ₫</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Drop zone -->
+      <div class="drop-zone" id="drop-zone">
+        <div class="drop-zone-icon">📤</div>
+        <h3>Kéo thả lô file Hóa đơn vào đây</h3>
+        <p>Hỗ trợ PDF, PNG, JPG, TIFF — AI sẽ tự động trích xuất và đưa lên bảng kiểm duyệt</p>
+        <div class="gap-row" style="justify-content:center;">
+          <button class="btn btn-primary" id="btn-upload">📁 Chọn file từ máy tính</button>
+          <button class="btn btn-ghost">✨ Thêm hóa đơn mẫu</button>
+        </div>
+      </div>
+
+      <!-- Review table -->
+      <div class="section">
+        <div class="section-title">
+          Bảng Kiểm duyệt Hóa đơn
+          <span>Click ô để sửa trực tiếp · Ctrl+K để tìm kiếm nhanh</span>
+        </div>
+
+        <div class="table-toolbar">
+          <div class="search-wrap">
+            <input type="text" class="t-search" id="t-search" placeholder="Tìm nhà cung cấp, số hóa đơn...">
+          </div>
+          <div class="filter-pills">
+            <button class="fpill active" data-f="all">Tất cả</button>
+            <button class="fpill" data-f="needs_review">Cần soi</button>
+            <button class="fpill" data-f="approved">Đã duyệt</button>
+          </div>
+        </div>
+
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>File Gốc</th>
+              <th>Nhà Cung Cấp</th>
+              <th>Số HĐ</th>
+              <th>Ngày</th>
+              <th>Tổng Tiền</th>
+              <th>Trạng Thái</th>
+              <th>Thao Tác</th>
+            </tr>
+          </thead>
+          <tbody id="inv-tbody"></tbody>
+        </table>
+      </div>
+    </div><!-- /view-accounting -->
+
+    <!-- ─── VIEW: TRANSLATOR (Placeholder) ─── -->
+    <div class="view" id="view-translator">
+      <div class="hub-header">
+        <h1>📄 Dịch tài liệu</h1>
+        <p style="color:var(--c-warn);">⚡ Tính năng đang trong giai đoạn phát triển Beta. Sắp ra mắt!</p>
+      </div>
+      <div class="drop-zone" style="cursor:default; opacity:.6;">
+        <div class="drop-zone-icon">🌐</div>
+        <h3>Upload file PDF / DOCX / PPTX</h3>
+        <p>Chọn ngôn ngữ nguồn → Ngôn ngữ đích → AI dịch giữ nguyên bố cục</p>
+        <div class="gap-row" style="justify-content:center;">
+          <button class="btn btn-primary" disabled>📁 Chọn tài liệu (Coming Soon)</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── VIEW: MEETING (Placeholder) ─── -->
+    <div class="view" id="view-meeting">
+      <div class="hub-header">
+        <h1>🎙️ Biên bản & Tóm tắt Cuộc họp</h1>
+        <p style="color:var(--t-3);">🔒 Tính năng sẽ ra mắt trong phiên bản tiếp theo.</p>
+      </div>
+    </div>
+
+    <!-- ─── VIEW: SETTINGS ─── -->
+    <div class="view" id="view-settings">
+      <div class="hub-header">
+        <h1>⚙️ Cấu hình AI Engine</h1>
+        <p>Chọn nhà cung cấp AI và cấu hình API Key cho hệ thống.</p>
+      </div>
+      <div class="stats-row" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); margin-bottom:20px;">
+        <div class="stat-box" style="cursor:pointer; border-color: var(--c-brand);">
+          <div class="stat-icon">🟢</div>
+          <div>
+            <div class="stat-label">Đang dùng</div>
+            <div class="stat-val" style="font-size:1rem;">Google Gemini 1.5 Flash</div>
+          </div>
+        </div>
+        <div class="stat-box" style="cursor:pointer; opacity:.5;">
+          <div class="stat-icon">⚪</div>
+          <div>
+            <div class="stat-label">Không hoạt động</div>
+            <div class="stat-val" style="font-size:1rem;">OpenAI GPT-4o</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section" style="max-width:600px;">
+        <div class="section-title">Cấu hình Gemini Vision API Key (Đọc Ảnh/PDF Scan 100% AI)</div>
+        <div class="field-group" style="margin-bottom:12px;">
+          <label class="field-label">GEMINI_API_KEY</label>
+          <input type="password" class="field-input" id="cfg-gemini-key" placeholder="Dán Gemini API Key (AIzaSy...) vào đây">
+        </div>
+        <div style="display:flex; gap:10px;">
+          <button class="btn btn-primary btn-sm" onclick="saveGeminiKey()">💾 Lưu Cấu Hình Key</button>
+          <span id="cfg-key-status" style="font-size:.8rem; color:var(--c-ok); align-self:center;"></span>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /workspace -->
+</div><!-- /main -->
+
+<!-- ══════════════════════════════════════
+     SEARCH MODAL (Ctrl+K)
+══════════════════════════════════════ -->
+<div class="modal-backdrop" id="search-modal">
+  <div class="search-modal">
+    <div class="modal-search-row">
+      <span>🔍</span>
+      <input type="text" id="search-input" placeholder="Tìm kiếm ứng dụng hoặc tính năng..." autofocus>
+      <kbd>ESC</kbd>
+    </div>
+    <div class="modal-results" id="modal-results"></div>
+    <div class="modal-hint">
+      <span class="hint-key"><kbd>↑↓</kbd> Điều hướng</span>
+      <span class="hint-key"><kbd>↵</kbd> Chọn</span>
+      <span class="hint-key"><kbd>Esc</kbd> Đóng</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     INSPECTOR MODAL (Split-Screen)
+══════════════════════════════════════ -->
+<div class="inspector-overlay" id="inspector-modal">
+  <div class="inspector-panel">
+    <div class="inspector-header">
+      <span style="font-size:1.1rem; font-weight:600;">🔍 Soi & Đối Chiếu Chứng Từ</span>
+      <span class="badge badge-warn" id="insp-filename">HOA_DON.pdf</span>
+      <div style="margin-left:auto; display:flex; gap:8px;">
+        <button class="btn btn-ghost btn-sm" onclick="closeInspector()">✕ Đóng</button>
+      </div>
+    </div>
+
+    <div class="inspector-body">
+      <!-- Left: Doc preview -->
+      <div class="doc-pane">
+        <div class="doc-pane-bar">
+          📄 Chứng từ gốc (Preview)
+          <span style="margin-left:auto; color:var(--c-ok);">● Highlight khu vực số liệu</span>
+        </div>
+        <div class="doc-preview">
+          <div class="doc-paper" id="doc-paper-content">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Form editor -->
+      <div class="form-pane" id="form-pane">
+        <div class="warn-box" id="insp-warn-box" style="display:none;"></div>
+        <div class="section-title" style="font-size:.85rem; color:var(--c-brand);">Thông tin Trích Xuất AI — Có thể chỉnh sửa</div>
+
+        <div class="field-row">
+          <div class="field-group">
+            <label class="field-label">Tên Nhà Cung Cấp</label>
+            <input type="text" class="field-input" id="f-supplier">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Mã Số Thuế</label>
+            <input type="text" class="field-input" id="f-tax-id">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Số Hóa Đơn</label>
+            <input type="text" class="field-input" id="f-inv-num">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Ngày Phát Hành</label>
+            <input type="text" class="field-input" id="f-inv-date">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Loại Tiền</label>
+            <input type="text" class="field-input" id="f-currency">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Tiền trước thuế</label>
+            <input type="number" class="field-input" id="f-subtotal">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Tiền Thuế VAT</label>
+            <input type="number" class="field-input" id="f-vat">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Tổng Thanh Toán</label>
+            <input type="number" class="field-input field-money" id="f-total">
+          </div>
+        </div>
+
+        <hr class="divider">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+          <div class="section-title" style="font-size:.85rem; margin-bottom:0;">Danh sách Hàng hóa / Dịch vụ</div>
+          <button class="btn btn-ghost btn-sm" onclick="addLineItemRow()" style="font-size:.73rem;">+ Thêm dòng</button>
+        </div>
+        <div id="line-items-list" style="display:flex; flex-direction:column; gap:8px; margin-bottom:auto;"></div>
+      </div>
+    </div>
+
+    <div class="inspector-footer">
+      <button class="btn btn-ghost" onclick="closeInspector()">Hủy bỏ</button>
+      <button class="btn btn-primary" onclick="saveInspector()">✓ Lưu & Phê Duyệt Hóa Đơn</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     EXPORT BAR
+══════════════════════════════════════ -->
+<div class="export-bar" id="export-bar" style="display:none;">
+  <span class="export-bar-label" id="export-bar-label">2 hóa đơn đã duyệt</span>
+  <button class="btn btn-ghost btn-sm" onclick="approveAll()">✓ Duyệt tất cả</button>
+  <button class="btn btn-primary btn-sm" onclick="exportExcel()">📊 Xuất Excel (.xlsx)</button>
+</div>
+
+<script src="src/state-sync.js"></script>
+<script src="src/app.js"></script>
+</body>
+</html>
