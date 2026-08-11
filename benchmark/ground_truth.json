@@ -1,0 +1,361 @@
+{
+  "version": "1.0",
+  "description": "Ground truth dataset of 20 anonymized benchmark invoices for precision and accuracy evaluation",
+  "invoices": [
+    {
+      "id": "inv-01",
+      "filename": "1C26TAP_00008228_0317333953.pdf",
+      "media_type": "application/pdf",
+      "input_text": "CÔNG TY TNHH DỊCH VỤ CÔNG NGHỆ VÀ TRUYỀN THÔNG V-TECH\nMã số thuế (Tax code): 0317333953\nĐịa chỉ: Tầng 4, Tòa nhà Bitexco, Q.1, TP. Hồ Chí Minh\n\nHÓA ĐƠN GIÁ TRỊ GIA TĂNG\nKý hiệu (Series): 1C26TAP\nSố (No.): 00008228\nNgày (Date): 15/06/2025\n\nTên người mua: CÔNG TY CỔ PHẦN PHẦN MỀM THÁI BÌNH DƯƠNG\nMã số thuế: 0108992345\n\nTên hàng hóa, dịch vụ | ĐVT | Số lượng | Đơn giá | Thành tiền\nDịch vụ máy chủ ảo Cloud VPS Pro | Tháng | 1 | 2.500.000 | 2.500.000\nBăng thông mở rộng 1Gbps | Tháng | 1 | 500.000 | 500.000\n\nCộng tiền hàng (Subtotal): 3.000.000 VND\nTiền thuế GTGT (VAT 10%): 300.000 VND\nTổng cộng tiền thanh toán (Total): 3.300.000 VND",
+      "expected": {
+        "supplier_name": "CÔNG TY TNHH DỊCH VỤ CÔNG NGHỆ VÀ TRUYỀN THÔNG V-TECH",
+        "supplier_tax_id": "0317333953",
+        "buyer_tax_id": "0108992345",
+        "invoice_number": "00008228",
+        "invoice_date": "15/06/2025",
+        "currency": "VND",
+        "subtotal": 3000000.0,
+        "tax_amount": 300000.0,
+        "total_amount": 3300000.0,
+        "items_count": 2
+      }
+    },
+    {
+      "id": "inv-02",
+      "filename": "HD_AZDIGI_357073.pdf",
+      "media_type": "application/pdf",
+      "input_text": "Công ty Cổ phần AZDIGI\nMã số thuế: 0313755538\nĐịa chỉ: 766/1 Sư Vạn Hạnh, P.12, Q.10, TP.HCM\n\nHÓA ĐƠN ĐIỆN TỬ\nSố hóa đơn: 357073\nNgày: 20/05/2025\n\nKhách hàng: Công ty Cổ phần Alpha\nMã số thuế: 0306012059\n\nDiễn giải | Số lượng | Đơn giá | Thành tiền\nTên miền .vn (1 năm) | 1 | 750.000 | 750.000\n\nCộng tiền hàng: 750.000\nTiền thuế GTGT: 75.000\nTổng tiền thanh toán: 825.000 VND",
+      "expected": {
+        "supplier_name": "Công ty Cổ phần AZDIGI",
+        "supplier_tax_id": "0313755538",
+        "buyer_tax_id": "0306012059",
+        "invoice_number": "357073",
+        "invoice_date": "20/05/2025",
+        "currency": "VND",
+        "subtotal": 750000.0,
+        "tax_amount": 75000.0,
+        "total_amount": 825000.0,
+        "items_count": 1
+      }
+    },
+    {
+      "id": "inv-03",
+      "filename": "VIETTEL_TELECOM_0012903.pdf",
+      "media_type": "application/pdf",
+      "input_text": "TẬP ĐOÀN CÔNG NGHIỆP - VIỄN THÔNG QUÂN ĐỘI (VIETTEL)\nMã số thuế: 0100109106\n\nHÓA ĐƠN CƯỚC VIỄN THÔNG\nSố: 0012903\nNgày phát hành: 05/07/2025\n\nKhách hàng: CÔNG TY TNHH ĐẦU TƯ MINH KHANG\nMST: 0315544332\n\nNội dung cước | ĐVT | Tiền trước thuế\nCước dịch vụ Internet cáp quang Fiber | Tháng | 1.200.000\n\nTiền trước thuế: 1.200.000\nThuế GTGT (10%): 120.000\nTổng cộng: 1.320.000 VND",
+      "expected": {
+        "supplier_name": "TẬP ĐOÀN CÔNG NGHIỆP - VIỄN THÔNG QUÂN ĐỘI",
+        "supplier_tax_id": "0100109106",
+        "buyer_tax_id": "0315544332",
+        "invoice_number": "0012903",
+        "invoice_date": "05/07/2025",
+        "currency": "VND",
+        "subtotal": 1200000.0,
+        "tax_amount": 120000.0,
+        "total_amount": 1320000.0,
+        "items_count": 1
+      }
+    },
+    {
+      "id": "inv-04",
+      "filename": "VNPT_MEDIA_004561.pdf",
+      "media_type": "application/pdf",
+      "input_text": "TỔNG CÔNG TY TRUYỀN THÔNG (VNPT-MEDIA)\nMã số thuế: 0106869738\n\nHÓA ĐƠN GTGT ĐIỆN TỬ\nSố: 004561\nNgày: 01/06/2025\n\nNgười mua: CÔNG TY TNHH BẢO HIỂM SAO VIỆT\nMST: 0104433221\n\nDịch vụ tin nhắn SMS Brandname | SL: 10000 | Đơn giá: 450 | Thành tiền: 4.500.000\n\nCộng tiền hàng: 4.500.000\nTiền thuế GTGT: 450.000\nTổng tiền: 4.950.000 VND",
+      "expected": {
+        "supplier_name": "TỔNG CÔNG TY TRUYỀN THÔNG",
+        "supplier_tax_id": "0106869738",
+        "buyer_tax_id": "0104433221",
+        "invoice_number": "004561",
+        "invoice_date": "01/06/2025",
+        "currency": "VND",
+        "subtotal": 4500000.0,
+        "tax_amount": 450000.0,
+        "total_amount": 4950000.0,
+        "items_count": 1
+      }
+    },
+    {
+      "id": "inv-05",
+      "filename": "FPT_TELECOM_77889.pdf",
+      "media_type": "application/pdf",
+      "input_text": "CÔNG TY CỔ PHẦN VIỄN THÔNG FPT\nMã số thuế: 0101778163\n\nHÓA ĐƠN ĐIỆN TỬ\nSố: 0077889\nNgày 28/05/2025\n\nNgười mua: CÔNG TY TNHH THỰC PHẨM AN LÀNH\nMST: 0314455667\n\nDịch vụ Kênh thuê riêng Leased Line | Tiền: 8.000.000\n\nTiền trước thuế: 8.000.000\nTiền thuế GTGT: 800.000\nTổng thanh toán: 8.800.000 VND",
+      "expected": {
+        "supplier_name": "CÔNG TY CỔ PHẦN VIỄN THÔNG FPT",
+        "supplier_tax_id": "0101778163",
+        "buyer_tax_id": "0314455667",
+        "invoice_number": "0077889",
+        "invoice_date": "28/05/2025",
+        "currency": "VND",
+        "subtotal": 8000000.0,
+        "tax_amount": 800000.0,
+        "total_amount": 8800000.0,
+        "items_count": 1
+      }
+    },
+    {
+      "id": "inv-06",
+      "filename": "GOOGLE_CLOUD_INV_2025.pdf",
+      "media_type": "application/pdf",
+      "input_text": "Google Asia Pacific Pte. Ltd.\nTax ID: 200817984R\n70 Pasir Panjang Road, Singapore\n\nINVOICE\nInvoice Number: GOOG-998822\nInvoice Date: 2025-06-01\n\nCustomer: Future AI Labs JSC\n\nGoogle Cloud Platform - Compute Engine | $450.00\nGoogle Cloud Platform - Cloud Storage | $50.00\n\nSubtotal: $500.00\nVAT / GST: $0.00\nTotal Amount Due: $500.00\nCurrency: USD",
+      "expected": {
+        "supplier_name": "Google Asia Pacific Pte. Ltd.",
+        "supplier_tax_id": "200817984R",
+        "invoice_number": "GOOG-998822",
+        "invoice_date": "2025-06-01",
+        "currency": "USD",
+        "subtotal": 500.0,
+        "tax_amount": 0.0,
+        "total_amount": 500.0,
+        "items_count": 2
+      }
+    },
+    {
+      "id": "inv-07",
+      "filename": "AMAZON_AWS_2025_05.pdf",
+      "media_type": "application/pdf",
+      "input_text": "Amazon Web Services Inc.\nTax ID: 980442345\n\nTAX INVOICE\nInvoice Number: AWS-554433\nDate: 2025-05-31\n\nBill To: Global FinTech JSC\n\nAWS EC2 Instances | $800.00\nAWS RDS Aurora Database | $200.00\n\nSubtotal: $1,000.00\nEstimated Tax: $0.00\nTotal Amount: $1,000.00\nCurrency: USD",
+      "expected": {
+        "supplier_name": "Amazon Web Services Inc.",
+        "supplier_tax_id": "980442345",
+        "invoice_number": "AWS-554433",
+        "invoice_date": "2025-05-31",
+        "currency": "USD",
+        "subtotal": 1000.0,
+        "tax_amount": 0.0,
+        "total_amount": 1000.0,
+        "items_count": 2
+      }
+    },
+    {
+      "id": "inv-08",
+      "filename": "MICROSOFT_AZURE_INV.pdf",
+      "media_type": "application/pdf",
+      "input_text": "Microsoft Ireland Operations Ltd\nVAT Reg No: IE8256796U\n\nINVOICE\nInvoice No: MS-88776655\nInvoice Date: 2025-06-10\n\nCustomer: Enterprise Solution Co\n\nMicrosoft 365 Business Premium (10 seats) | $220.00\n\nSubtotal: $220.00\nVAT (0%): $0.00\nTotal Amount: $220.00\nCurrency: USD",
+      "expected": {
+        "supplier_name": "Microsoft Ireland Operations Ltd",
+        "supplier_tax_id": "IE8256796U",
+        "invoice_number": "MS-88776655",
+        "invoice_date": "2025-06-10",
+        "currency": "USD",
+        "subtotal": 220.0,
+        "tax_amount": 0.0,
+        "total_amount": 220.0,
+        "items_count": 1
+      }
+    },
+    {
+      "id": "inv-09",
+      "filename": "OPENAI_SUBSCRIPTION_06.pdf",
+      "media_type": "application/pdf",
+      "input_text": "OpenAI, L.L.C.\n3180 18th St, San Francisco, CA\n\nINVOICE\nInvoice Number: OAI-112233\nDate: 2025-06-05\n\nDescription | Amount\nChatGPT Team Subscription (5 users) | $150.00\n\nSubtotal: $150.00\nTax: $0.00\nTotal Amount: $150.00\nCurrency: USD",
+      "expected": {
+        "supplier_name": "OpenAI, L.L.C.",
+        "invoice_number": "OAI-112233",
+        "invoice_date": "2025-06-05",
+        "currency": "USD",
+        "subtotal": 150.0,
+        "tax_amount": 0.0,
+        "total_amount": 150.0,
+        "items_count": 1
+      }
+    },
+    {
+      "id": "inv-10",
+      "filename": "THE_GIOI_DI_DONG_098.pdf",
+      "media_type": "application/pdf",
+      "input_text": "CÔNG TY CỔ PHẦN THẾ GIỚI DI ĐỘNG\nMã số thuế: 0303217354\n\nHÓA ĐƠN BÁN HÀNG KIÊM PHIẾU BẢO HÀNH\nSố: 0098123\nNgày: 12/06/2025\n\nKhách hàng: CÔNG TY TNHH PHÁT TRIỂN NGUYÊN BẢO\nMST: 0316677889\n\nLaptop Dell Latitude 5440 | SL: 2 | Đơn giá: 18.000.000 | Thành tiền: 36.000.000\nChuột không dây Logitech | SL: 2 | Đơn giá: 350.000 | Thành tiền: 700.000\n\nTổng cộng tiền hàng: 36.700.000\nTiền thuế GTGT (8%): 2.936.000\nTổng cộng tiền thanh toán: 39.636.000 VND",
+      "expected": {
+        "supplier_name": "CÔNG TY CỔ PHẦN THẾ GIỚI DI ĐỘNG",
+        "supplier_tax_id": "0303217354",
+        "buyer_tax_id": "0316677889",
+        "invoice_number": "0098123",
+        "invoice_date": "12/06/2025",
+        "currency": "VND",
+        "subtotal": 36700000.0,
+        "tax_amount": 2936000.0,
+        "total_amount": 39636000.0,
+        "items_count": 2
+      }
+    },
+    {
+      "id": "inv-11",
+      "filename": "GOLDEN_GATE_RESTAURANT.pdf",
+      "media_type": "application/pdf",
+      "input_text": "CÔNG TY CỔ PHẦN THƯƠNG MẠI DỊCH VỤ CỔNG VÀNG\nMã số thuế: 0102721191\n\nHÓA ĐƠN ĂN UỐNG TIẾP KHÁCH\nSố: 0044556\nNgày: 18/06/2025\n\nNgười mua: CÔNG TY TNHH XÂY DỰNG TRƯỜNG SƠN\nMST: 0105566778\n\nDịch vụ ăn uống Manwah Lẩu Đài Loan | SL: 1 | Thành tiền: 2.200.000\n\nTiền trước thuế: 2.200.000\nThuế GTGT (8%): 176.000\nTổng thanh toán: 2.376.000 VND",
+      "expected": {
+        "supplier_name": "CÔNG TY CỔ PHẦN THƯƠNG MẠI DỊCH VỤ CỔNG VÀNG",
+        "supplier_tax_id": "0102721191",
+        "buyer_tax_id": "0105566778",
+        "invoice_number": "0044556",
+        "invoice_date": "18/06/2025",
+        "currency": "VND",
+        "subtotal": 2200000.0,
+        "tax_amount": 176000.0,
+        "total_amount": 2376000.0,
+        "items_count": 1
+      }
+    },
+    {
+      "id": "inv-12",
+      "filename": "HIGHLANDS_COFFEE_INV.pdf",
+      "media_type": "application/pdf",
+      "input_text": "CÔNG TY CỔ PHẦN VIỆT THÁI QUỐC TẾ\nMã số thuế: 0303154865\n\nHÓA ĐƠN GTGT (Highlands Coffee)\nSố: 0011998\nNgày: 22/06/2025\n\nKhách hàng: CÔNG TY TNHH TRUYỀN THÔNG SAO BĂNG\nMST: 0317788990\n\nCà phê Phin Sữa Đá (Size L) | SL: 10 | Đơn giá: 45.000 | Thành tiền: 450.000\nBánh mì que Pate | SL: 10 | Đơn giá: 19.000 | Thành tiền: 190.000\n\nCộng tiền hàng: 640.000\nTiền thuế GTGT: 51.200\nTổng cộng: 691.200 VND",
+      "expected": {
+        "supplier_name": "CÔNG TY CỔ PHẦN VIỆT THÁI QUỐC TẾ",
+        "supplier_tax_id": "0303154865",
+        "buyer_tax_id": "0317788990",
+        "invoice_number": "0011998",
+        "invoice_date": "22/06/2025",
+        "currency": "VND",
+        "subtotal": 640000.0,
+        "tax_amount": 51200.0,
+        "total_amount": 691200.0,
+        "items_count": 2
+      }
+    },
+    {
+      "id": "inv-13",
+      "filename": "FAHASA_BOOKSTORE_09.pdf",
+      "media_type": "application/pdf",
+      "input_text": "CÔNG TY CỔ PHẦN PHÁT HÀNH SÁCH TP.HCM - FAHASA\nMã số thuế: 0304132047\n\nHÓA ĐƠN BÁN HÀNG VĂN PHÒNG PHẨM\nSố: 0033221\nNgày: 10/06/2025\n\nNgười mua: CÔNG TY CỔ PHẦN GIÁO DỤC TƯƠNG LAI\nMST: 0318899001\n\nGiấy in Double A A4 (Thùng 5 ram) | SL: 4 | Đơn giá: 350.000 | Thành tiền: 1.400.000\nBút bi Thiên Long | SL: 50 | Đơn giá: 5.000 | Thành tiền: 250.000\n\nTiền trước thuế: 1.650.000\nTiền thuế VAT: 165.000\nTổng thanh toán: 1.815.000 VND",
+      "expected": {
+        "supplier_name": "CÔNG TY CỔ PHẦN PHÁT HÀNH SÁCH TP.HCM",
+        "supplier_tax_id": "0304132047",
+        "buyer_tax_id": "0318899001",
+        "invoice_number": "0033221",
+        "invoice_date": "10/06/2025",
+        "currency": "VND",
+        "subtotal": 1650000.0,
+        "tax_amount": 165000.0,
+        "total_amount": 1815000.0,
+        "items_count": 2
+      }
+    },
+    {
+      "id": "inv-14",
+      "filename": "TIKI_GLOBAL_CORP.pdf",
+      "media_type": "application/pdf",
+      "input_text": "CÔNG TY TNHH TIKI\nMã số thuế: 0309532909\n\nHÓA ĐƠN GTGT ĐIỆN TỬ\nSố: 0066778\nNgày: 25/06/2025\n\nKhách hàng: CÔNG TY TNHH THIẾT KẾ ĐỒ HỌA ART\nMST: 0312233445\n\nBàn phím cơ Keychron K2 | SL: 1 | Đơn giá: 1.890.000 | Thành tiền: 1.890.000\n\nCộng tiền hàng: 1.890.000\nTiền thuế GTGT (8%): 151.200\nTổng cộng thanh toán: 2.041.200 VND",
+      "expected": {
+        "supplier_name": "CÔNG TY TNHH TIKI",
+        "supplier_tax_id": "0309532909",
+        "buyer_tax_id": "0312233445",
+        "invoice_number": "0066778",
+        "invoice_date": "25/06/2025",
+        "currency": "VND",
+        "subtotal": 1890000.0,
+        "tax_amount": 151200.0,
+        "total_amount": 2041200.0,
+        "items_count": 1
+      }
+    },
+    {
+      "id": "inv-15",
+      "filename": "GRAB_VIETNAM_INV.pdf",
+      "media_type": "application/pdf",
+      "input_text": "CÔNG TY TNHH GRAB\nMã số thuế: 0312650437\nĐịa chỉ: Tòa nhà Mapletree, Q.7, TP.HCM\n\nHÓA ĐƠN DỊCH VỤ VẬN CHUYỂN\nSố: 0055441\nNgày: 08/06/2025\n\nKhách hàng doanh nghiệp: CÔNG TY TNHH TƯ VẤN QUẢN LÝ ALPHA\nMST: 0319988776\n\nCước GrabCar công tác công vụ | SL: 1 | Thành tiền: 450.000\n\nTiền trước thuế: 450.000\nTiền thuế GTGT: 45.000\nTổng thanh toán: 495.000 VND",
+      "expected": {
+        "supplier_name": "CÔNG TY TNHH GRAB",
+        "supplier_tax_id": "0312650437",
+        "buyer_tax_id": "0319988776",
+        "invoice_number": "0055441",
+        "invoice_date": "08/06/2025",
+        "currency": "VND",
+        "subtotal": 450000.0,
+        "tax_amount": 45000.0,
+        "total_amount": 495000.0,
+        "items_count": 1
+      }
+    },
+    {
+      "id": "inv-16",
+      "filename": "SHOPEE_EXPRESS_VN.pdf",
+      "media_type": "application/pdf",
+      "input_text": "CÔNG TY TNHH SPX EXPRESS\nMã số thuế: 0316345688\n\nHÓA ĐƠN CƯỚC CHUYỂN PHÁT NHANH\nSố: 0012344\nNgày: 19/06/2025\n\nNgười mua: CÔNG TY TNHH THỜI TRANG ĐÔ THỊ\nMST: 0315566778\n\nCước giao hàng chặng cuối tháng 05/2025 | Thành tiền: 5.600.000\n\nTiền trước thuế: 5.600.000\nThuế GTGT (8%): 448.000\nTổng thanh toán: 6.048.000 VND",
+      "expected": {
+        "supplier_name": "CÔNG TY TNHH SPX EXPRESS",
+        "supplier_tax_id": "0316345688",
+        "buyer_tax_id": "0315566778",
+        "invoice_number": "0012344",
+        "invoice_date": "19/06/2025",
+        "currency": "VND",
+        "subtotal": 5600000.0,
+        "tax_amount": 448000.0,
+        "total_amount": 6048000.0,
+        "items_count": 1
+      }
+    },
+    {
+      "id": "inv-17",
+      "filename": "VIETRAVEL_AIR_TICKET.pdf",
+      "media_type": "application/pdf",
+      "input_text": "CÔNG TY CỔ PHẦN DU LỊCH VÀ TIẾP THỊ GIAO THÔNG VẬN TẢI VIỆT NAM (VIETRAVEL)\nMã số thuế: 0300481051\n\nHÓA ĐƠN VÉ MÁY BAY & KHÁCH SẠN\nSố: 0088112\nNgày: 14/06/2025\n\nNgười mua: TẬP ĐOÀN ĐẦU TƯ BẤT ĐỘNG SẢN HOÀNG GIA\nMST: 0103344556\n\nVé máy bay khứ hồi Hà Nội - TP.HCM | SL: 2 | Đơn giá: 3.500.000 | Thành tiền: 7.000.000\nPhòng khách sạn 4 sao (2 đêm) | SL: 2 | Đơn giá: 1.500.000 | Thành tiền: 3.000.000\n\nCộng tiền hàng: 10.000.000\nTiền thuế VAT: 1.000.000\nTổng cộng: 11.000.000 VND",
+      "expected": {
+        "supplier_name": "CÔNG TY CỔ PHẦN DU LỊCH VÀ TIẾP THỊ GIAO THÔNG VẬN TẢI VIỆT NAM",
+        "supplier_tax_id": "0300481051",
+        "buyer_tax_id": "0103344556",
+        "invoice_number": "0088112",
+        "invoice_date": "14/06/2025",
+        "currency": "VND",
+        "subtotal": 10000000.0,
+        "tax_amount": 1000000.0,
+        "total_amount": 11000000.0,
+        "items_count": 2
+      }
+    },
+    {
+      "id": "inv-18",
+      "filename": "VIETNAM_AIRLINES_INV.pdf",
+      "media_type": "application/pdf",
+      "input_text": "TỔNG CÔNG TY HÀNG KHÔNG VIỆT NAM - CTCP (VIETNAM AIRLINES)\nMã số thuế: 0100107518\n\nHÓA ĐƠN DỊCH VỤ VẬN CHUYỂN HÀNG KHÔNG\nSố: 0099443\nNgày: 03/06/2025\n\nKhách hàng: CÔNG TY TNHH XUẤT NHẬP KHẨU ĐẠI DƯƠNG\nMST: 0308877665\n\nCước vận chuyển hành khách HAN-SGN | SL: 1 | Thành tiền: 2.800.000\nPhí an ninh soi chiếu và dịch vụ sân bay | SL: 1 | Thành tiền: 200.000\n\nCộng tiền hàng: 3.000.000\nTiền thuế GTGT: 300.000\nTổng tiền thanh toán: 3.300.000 VND",
+      "expected": {
+        "supplier_name": "TỔNG CÔNG TY HÀNG KHÔNG VIỆT NAM",
+        "supplier_tax_id": "0100107518",
+        "buyer_tax_id": "0308877665",
+        "invoice_number": "0099443",
+        "invoice_date": "03/06/2025",
+        "currency": "VND",
+        "subtotal": 3000000.0,
+        "tax_amount": 300000.0,
+        "total_amount": 3300000.0,
+        "items_count": 2
+      }
+    },
+    {
+      "id": "inv-19",
+      "filename": "PETROLIMEX_XANG_DAU.pdf",
+      "media_type": "application/pdf",
+      "input_text": "TẬP ĐOÀN XĂNG DẦU VIỆT NAM (PETROLIMEX)\nMã số thuế: 0100107624\n\nHÓA ĐƠN BÁN LẺ XĂNG DẦU\nSố: 0077119\nNgày: 21/06/2025\n\nNgười mua: CÔNG TY TNHH VẬN TẢI HÀ ĐÔNG\nMST: 0107788991\n\nXăng RON 95-III | SL: 100 Lít | Đơn giá: 22.500 | Thành tiền: 2.250.000\n\nTiền trước thuế: 2.250.000\nTiền thuế GTGT: 225.000\nTổng tiền: 2.475.000 VND",
+      "expected": {
+        "supplier_name": "TẬP ĐOÀN XĂNG DẦU VIỆT NAM",
+        "supplier_tax_id": "0100107624",
+        "buyer_tax_id": "0107788991",
+        "invoice_number": "0077119",
+        "invoice_date": "21/06/2025",
+        "currency": "VND",
+        "subtotal": 2250000.0,
+        "tax_amount": 225000.0,
+        "total_amount": 2475000.0,
+        "items_count": 1
+      }
+    },
+    {
+      "id": "inv-20",
+      "filename": "EVN_DIEN_LUC_HN.pdf",
+      "media_type": "application/pdf",
+      "input_text": "TỔNG CÔNG TY ĐIỆN LỰC TP HÀ NỘI (EVNHANOI)\nMã số thuế: 0100108920\n\nHÓA ĐƠN TIỀN ĐIỆN\nSố: 0033112\nNgày: 02/06/2025\n\nKhách hàng: CÔNG TY CỔ PHẦN CÔNG NGHỆ Á CHÂU\nMST: 0106677889\n\nĐiện năng tiêu thụ kỳ 05/2025 | SL: 2500 kWh | Thành tiền: 7.500.000\n\nTiền điện chưa thuế: 7.500.000\nTiền thuế GTGT (8%): 600.000\nTổng tiền thanh toán: 8.100.000 VND",
+      "expected": {
+        "supplier_name": "TỔNG CÔNG TY ĐIỆN LỰC TP HÀ NỘI",
+        "supplier_tax_id": "0100108920",
+        "buyer_tax_id": "0106677889",
+        "invoice_number": "0033112",
+        "invoice_date": "02/06/2025",
+        "currency": "VND",
+        "subtotal": 7500000.0,
+        "tax_amount": 600000.0,
+        "total_amount": 8100000.0,
+        "items_count": 1
+      }
+    }
+  ]
+}
