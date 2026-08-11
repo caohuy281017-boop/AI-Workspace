@@ -201,16 +201,15 @@ function renderTable() {
 
   tbody.innerHTML = list.map(inv => {
     const e = inv.ext;
-    const badge = inv.status === 'approved'
-      ? `<span class="badge badge-ok"><span class="badge-dot"></span>Đã duyệt</span>`
-      : `<span class="badge badge-warn"><span class="badge-dot"></span>Cần soi</span>`;
+    const badge = renderStatusBadge(inv);
 
     const typeInfo = INVOICE_TYPE_LABELS[inv.invoice_type || 'dau_vao'] || INVOICE_TYPE_LABELS['dau_vao'];
     const typeBadge = `<span class="badge ${typeInfo.cls}" style="font-size:.68rem;">${typeInfo.label}</span>`;
 
-    const warningsText = (inv.warnings || []).map(w => escapeHtml(w)).join('\n');
-    const warnIcon = inv.warnings && inv.warnings.length
-      ? `<span title="${warningsText}" style="margin-left:6px; cursor:help;">⚠️</span>` : '';
+    const allIssues = (inv.validation_errors || []).concat((inv.warnings || []).map(w => ({ message: w, severity: 'warning' })));
+    const warnIcon = allIssues.length
+      ? `<span title="${escapeHtml(allIssues.map(i => i.message || i).join('\n'))}" style="margin-left:6px; cursor:help;">${inv.validation_status === 'error' ? '🛑' : '⚠️'}</span>`
+      : '';
 
     const approveBtn = inv.status === 'needs_review'
       ? `<button class="btn btn-ghost btn-sm" onclick="approveInv('${escapeHtml(inv.batch_id)}','${escapeHtml(inv.id)}')">✓ Duyệt</button>` : '';
@@ -243,6 +242,42 @@ function renderTable() {
       </td>
     </tr>`;
   }).join('');
+}
+
+// ── Render 10 Status Badges ────────────────────────────
+function renderStatusBadge(inv) {
+  const st = inv.status;
+  const vs = inv.validation_status;
+
+  if (st === 'approved') {
+    return `<span class="badge badge-ok" aria-label="Trạng thái: Đã duyệt"><span class="badge-dot"></span>Đã duyệt</span>`;
+  }
+  if (st === 'failed') {
+    return `<span class="badge badge-error" aria-label="Trạng thái: Thất bại"><span class="badge-dot"></span>Thất bại</span>`;
+  }
+  if (st === 'provider_error') {
+    return `<span class="badge badge-error" aria-label="Trạng thái: Lỗi Provider"><span class="badge-dot"></span>Lỗi AI Key</span>`;
+  }
+  if (st === 'interrupted') {
+    return `<span class="badge badge-interrupted" aria-label="Trạng thái: Bị gián đoạn"><span class="badge-dot"></span>Gián đoạn</span>`;
+  }
+  if (st === 'queued') {
+    return `<span class="badge badge-queued" aria-label="Trạng thái: Đang chờ"><span class="badge-dot"></span>Đang chờ</span>`;
+  }
+  if (st === 'running') {
+    return `<span class="badge badge-running" aria-label="Trạng thái: Đang xử lý"><span class="badge-dot"></span>Đang đọc...</span>`;
+  }
+  if (st === 'retrying') {
+    return `<span class="badge badge-retrying" aria-label="Trạng thái: Đang thử lại"><span class="badge-dot"></span>Thử lại...</span>`;
+  }
+  // needs_review with validation nuances:
+  if (vs === 'error' || (inv.errors && inv.errors.length)) {
+    return `<span class="badge badge-error" title="Có lỗi số liệu cần sửa" aria-label="Trạng thái: Lỗi số liệu"><span class="badge-dot"></span>Lỗi số liệu</span>`;
+  }
+  if (vs === 'warning' || (inv.warnings && inv.warnings.length)) {
+    return `<span class="badge badge-warn" title="Có cảnh báo số liệu cần kiểm tra" aria-label="Trạng thái: Cảnh báo"><span class="badge-dot"></span>Cần kiểm tra</span>`;
+  }
+  return `<span class="badge badge-info" aria-label="Trạng thái: Chờ duyệt"><span class="badge-dot"></span>Chờ duyệt</span>`;
 }
 
 // ── Backend API Calls ──────────────────────────────────
@@ -281,15 +316,25 @@ async function loadBatchesFromBackend() {
             invoice_type: item.invoice_type || 'dau_vao',
             note: item.note || '',
             warnings: item.warnings || [],
+            errors: item.errors || [],
+            validation_status: item.validation_status || 'pending',
+            validation_errors: item.validation_errors || [],
             ext: {
-              supplier: ext.supplier_name || 'Nhà cung cấp chưa xác định',
+              supplier: ext.supplier_name || '',
               tax: ext.supplier_tax_id || '',
-              num: ext.invoice_number || '—',
-              date: ext.invoice_date || '—',
+              buyer_name: ext.buyer_name || '',
+              buyer_tax: ext.buyer_tax_id || '',
+              template: ext.invoice_template_number || '',
+              series: ext.invoice_series || '',
+              num: ext.invoice_number || '',
+              date: ext.invoice_date || '',
               currency: ext.currency || 'VND',
-              sub: ext.subtotal || 0,
-              vat: ext.tax_amount || 0,
-              total: ext.total_amount || 0,
+              sub: ext.subtotal != null ? ext.subtotal : '',
+              discount: ext.discount_amount != null ? ext.discount_amount : '',
+              fees: ext.fees != null ? ext.fees : '',
+              vat: ext.tax_amount != null ? ext.tax_amount : '',
+              total: ext.total_amount != null ? ext.total_amount : '',
+              tax_breakdown: ext.tax_breakdown || [],
               items: normalizeLineItems(ext.items),
               customFields: ext.custom_fields || {}
             }
@@ -340,7 +385,7 @@ async function uploadRealFiles(files) {
     const batch = await res.json();
     STATE.currentBatchId = batch.batch_id;
 
-      batch.items.forEach(item => {
+    batch.items.forEach(item => {
       const ext = item.extraction || {};
       STATE.invoices.unshift({
         id: item.file_id,
@@ -350,15 +395,25 @@ async function uploadRealFiles(files) {
         invoice_type: item.invoice_type || 'dau_vao',
         note: item.note || '',
         warnings: item.warnings || [],
+        errors: item.errors || [],
+        validation_status: item.validation_status || 'pending',
+        validation_errors: item.validation_errors || [],
         ext: {
-          supplier: ext.supplier_name || 'Nhà cung cấp chưa xác định',
+          supplier: ext.supplier_name || '',
           tax: ext.supplier_tax_id || '',
-          num: ext.invoice_number || '—',
-          date: ext.invoice_date || '—',
+          buyer_name: ext.buyer_name || '',
+          buyer_tax: ext.buyer_tax_id || '',
+          template: ext.invoice_template_number || '',
+          series: ext.invoice_series || '',
+          num: ext.invoice_number || '',
+          date: ext.invoice_date || '',
           currency: ext.currency || 'VND',
-          sub: ext.subtotal || 0,
-          vat: ext.tax_amount || 0,
-          total: ext.total_amount || 0,
+          sub: ext.subtotal != null ? ext.subtotal : '',
+          discount: ext.discount_amount != null ? ext.discount_amount : '',
+          fees: ext.fees != null ? ext.fees : '',
+          vat: ext.tax_amount != null ? ext.tax_amount : '',
+          total: ext.total_amount != null ? ext.total_amount : '',
+          tax_breakdown: ext.tax_breakdown || [],
           items: normalizeLineItems(ext.items),
           customFields: ext.custom_fields || {}
         }
@@ -384,6 +439,15 @@ async function updateInvoiceOnBackend(batchId, fileId, updates) {
     if (!res.ok) {
       const errData = await res.json();
       throw new Error(errData.detail || "Cập nhật backend thất bại");
+    }
+    const updated = await res.json();
+    // Sync back validation results into local STATE
+    const target = STATE.invoices.find(i => i.id === fileId);
+    if (target) {
+      target.validation_status = updated.validation_status || target.validation_status;
+      target.validation_errors = updated.validation_errors || target.validation_errors;
+      target.warnings = updated.warnings || target.warnings;
+      target.errors = updated.errors || target.errors;
     }
     return true;
   } catch (err) {
@@ -648,6 +712,218 @@ function renderInspectorCustomFields(inv) {
   }).join('')}</div>`;
 }
 
+// ── Field mapping for interactive validation focus ─────
+const FIELD_MAP = {
+  'supplier_name': 'f-supplier',
+  'supplier_tax_id': 'f-tax-id',
+  'buyer_name': 'f-buyer-name',
+  'buyer_tax_id': 'f-buyer-tax',
+  'invoice_template_number': 'f-inv-template',
+  'invoice_series': 'f-inv-series',
+  'invoice_number': 'f-inv-num',
+  'invoice_date': 'f-inv-date',
+  'currency': 'f-currency',
+  'subtotal': 'f-subtotal',
+  'discount_amount': 'f-discount',
+  'fees': 'f-fees',
+  'tax_amount': 'f-vat',
+  'total_amount': 'f-total',
+};
+
+function focusValidationField(fieldKey) {
+  if (!fieldKey) return;
+  const inputId = FIELD_MAP[fieldKey] || (fieldKey.startsWith('items') ? 'line-items-list' : null);
+  if (!inputId) return;
+  const el = document.getElementById(inputId);
+  if (el) {
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (el.focus) el.focus();
+    el.classList.remove('field-highlight-flash');
+    void el.offsetWidth;
+    el.classList.add('field-highlight-flash');
+  }
+}
+
+function renderValidationIssues(inv) {
+  const container = document.getElementById('insp-val-report');
+  if (!container) return;
+
+  const issues = (inv.validation_errors || []).filter(i => i && typeof i === 'object');
+  const legacyWarnings = (inv.warnings || []).map(w => ({
+    code: 'LEGACY_WARNING',
+    severity: 'warning',
+    message: w,
+    field: null,
+  }));
+
+  const combined = issues.length > 0 ? issues : legacyWarnings;
+  if (!combined.length) {
+    container.innerHTML = `
+      <div class="val-report-box all-ok">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <span style="font-size:1.1rem;">✅</span>
+          <div>
+            <strong style="color:var(--c-ok); font-size:.82rem;">Số liệu đã được đối chiếu hợp lệ</strong>
+            <div style="font-size:.74rem; color:var(--t-3);">Tất cả công thức toán học và định dạng MST/Ngày đều đạt chuẩn.</div>
+          </div>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  const hasError = combined.some(i => i.severity === 'error');
+  const boxCls = hasError ? 'has-error' : 'has-warning';
+  const icon = hasError ? '🛑' : '⚠️';
+  const title = hasError ? 'Phát hiện lỗi số liệu / Bắt buộc kiểm tra' : 'Cảnh báo số liệu cần kế toán lưu ý';
+
+  const cardsHtml = combined.map(issue => {
+    const sev = issue.severity || 'warning';
+    const msg = escapeHtml(issue.message || 'Cảnh báo không xác định');
+    const fieldKey = issue.field;
+    const focusBtn = fieldKey
+      ? `<button class="val-focus-btn" onclick="focusValidationField('${escapeHtml(fieldKey)}')">🔍 Soi ô [${escapeHtml(fieldKey)}]</button>`
+      : '';
+
+    let metaHtml = '';
+    if (issue.expected != null || issue.actual != null || issue.difference != null) {
+      metaHtml = `
+        <div class="val-issue-meta">
+          ${issue.expected != null ? `<span class="val-pill">Kỳ vọng: <b>${escapeHtml(issue.expected)}</b></span>` : ''}
+          ${issue.actual != null ? `<span class="val-pill">Thực tế: <b>${escapeHtml(issue.actual)}</b></span>` : ''}
+          ${issue.difference != null ? `<span class="val-pill" style="color:var(--c-warn);">Lệch: <b>${escapeHtml(issue.difference)}</b></span>` : ''}
+        </div>
+      `;
+    }
+
+    return `
+      <div class="val-issue-card severity-${escapeHtml(sev)}">
+        <span style="font-size:1rem; flex-shrink:0;">${sev === 'error' ? '🛑' : '⚠️'}</span>
+        <div style="flex:1;">
+          <div style="display:flex; align-items:center; justify-content:space-between;">
+            <strong style="color:${sev === 'error' ? '#ef4444' : '#f59e0b'}; font-size:.78rem;">${msg}</strong>
+            ${focusBtn}
+          </div>
+          ${metaHtml}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  container.innerHTML = `
+    <div class="val-report-box ${boxCls}">
+      <div style="display:flex; align-items:center; gap:8px; margin-bottom:6px;">
+        <span style="font-size:1.1rem;">${icon}</span>
+        <strong style="font-size:.82rem; color:${hasError ? '#ef4444' : '#f59e0b'};">${title}</strong>
+      </div>
+      <div class="val-issue-list">${cardsHtml}</div>
+    </div>
+  `;
+}
+
+async function loadItemAuditLogs(batchId, fileId) {
+  const container = document.getElementById('insp-audit-container');
+  if (!container) return;
+  container.innerHTML = '<div style="color:var(--t-3); padding:6px 0;">Đang tải lịch sử...</div>';
+
+  try {
+    const res = await fetch(`${API_BASE}/api/v1/accounting/batches/${batchId}/items/${fileId}/audit-logs`);
+    if (!res.ok) throw new Error('Không thể tải audit log');
+    const data = await res.json();
+    const logs = data.audit_logs || [];
+
+    if (!logs.length) {
+      container.innerHTML = '<div style="color:var(--t-3); padding:6px 0;">Chưa có lịch sử sửa đổi thủ công nào.</div>';
+      return;
+    }
+
+    container.innerHTML = logs.map(log => {
+      const dateStr = log.created_at ? new Date(log.created_at).toLocaleString('vi-VN') : '—';
+      const actionBadge = log.action === 'override'
+        ? '<span class="badge badge-warn" style="font-size:.65rem;">Bỏ qua cảnh báo</span>'
+        : '<span class="badge badge-info" style="font-size:.65rem;">Chỉnh sửa</span>';
+      
+      const diffEntries = Object.entries(log.changes || {}).map(([k, v]) => {
+        return `<div>• <b>${escapeHtml(k)}</b>: <s>${escapeHtml(JSON.stringify(v.old))}</s> → <b style="color:var(--c-brand);">${escapeHtml(JSON.stringify(v.new))}</b></div>`;
+      }).join('');
+
+      const reasonHtml = log.reason
+        ? `<div style="margin-top:4px; font-style:italic; color:var(--c-warn);">Lý do: "${escapeHtml(log.reason)}"</div>`
+        : '';
+
+      return `
+        <div class="audit-entry">
+          <div class="audit-entry-header">
+            <span>${actionBadge} ${escapeHtml(log.user_id || 'Kế toán viên')}</span>
+            <span>${escapeHtml(dateStr)}</span>
+          </div>
+          <div class="audit-entry-diff">${diffEntries || '<div>Cập nhật trạng thái</div>'}</div>
+          ${reasonHtml}
+        </div>
+      `;
+    }).join('');
+  } catch (err) {
+    container.innerHTML = `<div style="color:var(--c-warn); padding:6px 0;">Lỗi: ${escapeHtml(err.message)}</div>`;
+  }
+}
+
+// ── Override Confirmation Modal Workflow ────────────────
+let pendingOverrideAction = null;
+
+function openOverrideModal(batchId, fileId, updates, isInspector = false) {
+  pendingOverrideAction = { batchId, fileId, updates, isInspector };
+  const modal = document.getElementById('override-modal');
+  const input = document.getElementById('override-reason-input');
+  if (input) input.value = '';
+  if (modal) modal.classList.add('open');
+}
+
+function closeOverrideModal() {
+  const modal = document.getElementById('override-modal');
+  if (modal) modal.classList.remove('open');
+  pendingOverrideAction = null;
+}
+
+async function confirmOverrideApprove() {
+  if (!pendingOverrideAction) return;
+  const input = document.getElementById('override-reason-input');
+  const reason = input ? input.value.trim() : '';
+
+  if (!reason) {
+    alert('Vui lòng nhập lý do phê duyệt hóa đơn có cảnh báo số liệu.');
+    if (input) input.focus();
+    return;
+  }
+
+  const { batchId, fileId, updates, isInspector } = pendingOverrideAction;
+  const finalUpdates = {
+    ...updates,
+    status: 'approved',
+    override_reason: reason,
+  };
+
+  const ok = await window.StateSync.updateInvoiceStatus(
+    fileId,
+    'approved',
+    { status: 'approved' },
+    () => updateInvoiceOnBackend(batchId, fileId, finalUpdates)
+  );
+
+  if (ok) {
+    const inv = STATE.invoices.find(i => i.id === fileId);
+    if (inv) {
+      inv.status = 'approved';
+      if (updates.ext) inv.ext = updates.ext;
+      if (updates.invoice_type) inv.invoice_type = updates.invoice_type;
+      if (updates.note) inv.note = updates.note;
+    }
+    closeOverrideModal();
+    if (isInspector) closeInspector();
+    recalcStats();
+    renderTable();
+  }
+}
+
 // ── Inspector modal (XSS Protected) ────────────────────
 function openInspector(id) {
   const inv = STATE.invoices.find(i => i.id === id);
@@ -657,22 +933,33 @@ function openInspector(id) {
   if (!STATE.customFields.length) loadCustomFields();
 
   setText('insp-filename', inv.file);
-  setVal('f-supplier', e.supplier); setVal('f-tax-id', e.tax);
-  setVal('f-inv-num', e.num);       setVal('f-inv-date', e.date);
-  setVal('f-currency', e.currency); setVal('f-subtotal', e.sub);
-  setVal('f-vat', e.vat);           setVal('f-total', e.total);
+  setVal('f-supplier', e.supplier);
+  setVal('f-tax-id', e.tax);
+  setVal('f-buyer-name', e.buyer_name || '');
+  setVal('f-buyer-tax', e.buyer_tax || '');
+  setVal('f-inv-series', e.series || '');
+  setVal('f-inv-template', e.template || '');
+  setVal('f-inv-num', e.num);
+  setVal('f-inv-date', e.date);
+  setVal('f-currency', e.currency || 'VND');
+  setVal('f-subtotal', e.sub);
+  setVal('f-discount', e.discount || '');
+  setVal('f-fees', e.fees || '');
+  setVal('f-vat', e.vat);
+  setVal('f-total', e.total);
+
   // Invoice type & note
   const typeSelect = document.getElementById('f-invoice-type');
   if (typeSelect) typeSelect.value = inv.invoice_type || 'dau_vao';
   const noteInput = document.getElementById('f-note');
   if (noteInput) noteInput.value = inv.note || '';
+
   renderInspectorCustomFields(inv);
+  renderValidationIssues(inv);
+  loadItemAuditLogs(inv.batch_id, inv.id);
 
   const wb = document.getElementById('insp-warn-box');
-  if (inv.warnings && inv.warnings.length) {
-    wb.style.display = 'block';
-    wb.innerHTML = '⚠️ ' + inv.warnings.map(w => escapeHtml(w)).join('<br>');
-  } else { wb.style.display = 'none'; }
+  if (wb) wb.style.display = 'none';
 
   const ll = document.getElementById('line-items-list');
   ll.innerHTML = '';
@@ -740,70 +1027,6 @@ function closeInspector() {
 }
 
 async function saveInspector() {
-  const inv = STATE.inspecting;
-  if (!inv) return;
-
-  const lineRows = document.querySelectorAll('#line-items-list .line-item-row');
-  const newItems = [];
-  lineRows.forEach(r => {
-    const desc = r.querySelector('.item-desc').value.trim();
-    const qty  = parseFloat(r.querySelector('.item-qty').value) || 1;
-    const price = parseFloat(r.querySelector('.item-price').value) || 0;
-    const amt  = parseFloat(r.querySelector('.item-amt').value) || (qty * price);
-    if (desc || amt > 0) {
-      newItems.push({ description: desc || 'Hàng hóa / Dịch vụ', quantity: qty, unit_price: price, amount: amt });
-    }
-  });
-
-  const nextExt = {
-    supplier: getVal('f-supplier'),
-    tax: getVal('f-tax-id'),
-    num: getVal('f-inv-num'),
-    date: getVal('f-inv-date'),
-    currency: getVal('f-currency'),
-    sub: parseFloat(getVal('f-subtotal')) || 0,
-    vat: parseFloat(getVal('f-vat')) || 0,
-    total: parseFloat(getVal('f-total')) || 0,
-    items: newItems,
-    customFields: {}
-  };
-  const newInvoiceType = (document.getElementById('f-invoice-type') || {}).value || inv.invoice_type || 'dau_vao';
-  const newNote = (document.getElementById('f-note') || {}).value || '';
-  document.querySelectorAll('.custom-field-input').forEach(input => {
-    nextExt.customFields[input.dataset.code] = input.type === 'number'
-      ? (parseFloat(input.value) || 0) : input.value;
-  });
-
-  const ok = await window.StateSync.updateInvoiceStatus(
-    inv.id,
-    'approved',
-    { ext: nextExt, status: 'approved', invoice_type: newInvoiceType, note: newNote },
-    () => updateInvoiceOnBackend(inv.batch_id, inv.id, {
-      supplier_name: nextExt.supplier,
-      supplier_tax_id: nextExt.tax,
-      invoice_number: nextExt.num,
-      invoice_date: nextExt.date,
-      currency: nextExt.currency,
-      subtotal: nextExt.sub,
-      tax_amount: nextExt.vat,
-      total_amount: nextExt.total,
-      items: nextExt.items,
-      custom_fields: nextExt.customFields,
-      invoice_type: newInvoiceType,
-      note: newNote,
-      status: 'approved'
-    })
-  );
-
-  if (ok) {
-    inv.invoice_type = newInvoiceType;
-    inv.note = newNote;
-    closeInspector();
-    recalcStats();
-    renderTable();
-  }
-}
-
 function selectAiProvider(provider, silent) {
   localStorage.setItem('AI_PROVIDER', provider);
   updateAiEngineCards(provider);

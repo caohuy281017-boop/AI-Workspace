@@ -457,6 +457,9 @@
       <!-- Right: Form editor -->
       <div class="form-pane" id="form-pane">
         <div class="warn-box" id="insp-warn-box" style="display:none;"></div>
+        <!-- Validation Report Box -->
+        <div id="insp-val-report"></div>
+
         <div class="section-title" style="font-size:.85rem; color:var(--c-brand);">Thông tin Trích Xuất AI — Có thể chỉnh sửa</div>
 
         <!-- Invoice type + note row -->
@@ -481,8 +484,16 @@
             <input type="text" class="field-input" id="f-supplier">
           </div>
           <div class="field-group">
-            <label class="field-label">Mã Số Thuế</label>
-            <input type="text" class="field-input" id="f-tax-id">
+            <label class="field-label">MST Người Bán</label>
+            <input type="text" class="field-input" id="f-tax-id" placeholder="10 hoặc 13 số">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Ký hiệu (Series)</label>
+            <input type="text" class="field-input" id="f-inv-series" placeholder="Ví dụ: AA/25E">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Mẫu số (Template)</label>
+            <input type="text" class="field-input" id="f-inv-template" placeholder="Ví dụ: 1/001">
           </div>
           <div class="field-group">
             <label class="field-label">Số Hóa Đơn</label>
@@ -493,12 +504,28 @@
             <input type="text" class="field-input" id="f-inv-date">
           </div>
           <div class="field-group">
+            <label class="field-label">Tên Đơn Vị Mua</label>
+            <input type="text" class="field-input" id="f-buyer-name">
+          </div>
+          <div class="field-group">
+            <label class="field-label">MST Người Mua</label>
+            <input type="text" class="field-input" id="f-buyer-tax">
+          </div>
+          <div class="field-group">
             <label class="field-label">Loại Tiền</label>
-            <input type="text" class="field-input" id="f-currency">
+            <input type="text" class="field-input" id="f-currency" placeholder="VND, USD...">
           </div>
           <div class="field-group">
             <label class="field-label">Tiền trước thuế</label>
             <input type="number" class="field-input" id="f-subtotal">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Chiết khấu / Giảm giá</label>
+            <input type="number" class="field-input" id="f-discount">
+          </div>
+          <div class="field-group">
+            <label class="field-label">Phí khác</label>
+            <input type="number" class="field-input" id="f-fees">
           </div>
           <div class="field-group">
             <label class="field-label">Tiền Thuế VAT</label>
@@ -518,12 +545,45 @@
           <button class="btn btn-ghost btn-sm" onclick="addLineItemRow()" style="font-size:.73rem;">+ Thêm dòng</button>
         </div>
         <div id="line-items-list" style="display:flex; flex-direction:column; gap:8px; margin-bottom:auto;"></div>
+
+        <!-- Audit Trail Section -->
+        <hr class="divider">
+        <details id="insp-audit-details" style="margin-top:10px; font-size:.8rem; cursor:pointer;">
+          <summary style="font-weight:600; color:var(--t-2);">📜 Lịch sử kiểm duyệt & Sửa đổi (Audit Trail)</summary>
+          <div id="insp-audit-container" class="audit-timeline">
+            <div style="color:var(--t-3); padding:6px 0;">Đang tải lịch sử...</div>
+          </div>
+        </details>
       </div>
     </div>
 
     <div class="inspector-footer">
       <button class="btn btn-ghost" onclick="closeInspector()">Hủy bỏ</button>
-      <button class="btn btn-primary" onclick="saveInspector()">✓ Lưu & Phê Duyệt Hóa Đơn</button>
+      <button class="btn btn-primary" id="btn-save-inspector" onclick="saveInspector()">✓ Lưu & Phê Duyệt Hóa Đơn</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════
+     OVERRIDE REASON MODAL
+══════════════════════════════════════ -->
+<div class="override-overlay" id="override-modal" role="dialog" aria-modal="true" aria-labelledby="override-title">
+  <div class="override-box">
+    <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+      <span style="font-size:1.4rem;">⚠️</span>
+      <h3 id="override-title" style="margin:0; font-size:1.05rem; color:var(--c-warn);">Xác nhận Bỏ qua Cảnh báo & Phê duyệt</h3>
+    </div>
+    <p style="font-size:.82rem; color:var(--t-2); line-height:1.5; margin-bottom:12px;">
+      Hóa đơn này có một số cảnh báo số liệu chưa hoàn toàn khớp với công thức kiểm tra tự động.
+      Để đảm bảo tính minh bạch kế toán, vui lòng nhập lý do phê duyệt (bắt buộc ghi nhận vào Audit Log).
+    </p>
+    <div style="margin-bottom:16px;">
+      <label class="field-label" for="override-reason-input" style="font-weight:600; margin-bottom:4px;">Lý do phê duyệt *</label>
+      <textarea id="override-reason-input" class="field-input" rows="3" placeholder="Ví dụ: Đã đối chiếu với hợp đồng gốc; chênh lệch 10đ do làm tròn thuế..."></textarea>
+    </div>
+    <div style="display:flex; justify-content:flex-end; gap:8px;">
+      <button class="btn btn-ghost" onclick="closeOverrideModal()">Hủy</button>
+      <button class="btn btn-primary" onclick="confirmOverrideApprove()">✓ Xác nhận Phê duyệt</button>
     </div>
   </div>
 </div>

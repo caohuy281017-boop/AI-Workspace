@@ -563,9 +563,160 @@ body {
   font-size: .70rem; font-weight: 600; text-transform: uppercase; letter-spacing: .04em;
   border: 1px solid;
 }
-.badge-ok   { background: var(--c-ok-bg);   color: var(--c-ok);   border-color: var(--c-ok-bd);   }
-.badge-warn { background: var(--c-warn-bg);  color: var(--c-warn); border-color: var(--c-warn-bd); }
-.badge-dot  { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink:0; }
+.badge-ok          { background: var(--c-ok-bg);   color: var(--c-ok);   border-color: var(--c-ok-bd);   }
+.badge-warn        { background: var(--c-warn-bg);  color: var(--c-warn); border-color: var(--c-warn-bd); }
+.badge-error       { background: rgba(239,68,68,.12); color: #ef4444; border-color: rgba(239,68,68,.3); }
+.badge-info        { background: rgba(59,130,246,.12); color: #3b82f6; border-color: rgba(59,130,246,.3); }
+.badge-queued      { background: rgba(156,163,175,.12); color: #9ca3af; border-color: rgba(156,163,175,.3); }
+.badge-running     { background: rgba(14,165,233,.15); color: #0ea5e9; border-color: rgba(14,165,233,.35); animation: pulse-running 2s infinite; }
+.badge-retrying    { background: rgba(245,158,11,.15); color: #f59e0b; border-color: rgba(245,158,11,.35); }
+.badge-interrupted { background: rgba(249,115,22,.15); color: #f97316; border-color: rgba(249,115,22,.35); }
+.badge-dot         { width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink:0; }
+
+@keyframes pulse-running {
+  0% { opacity: 1; }
+  50% { opacity: 0.6; }
+  100% { opacity: 1; }
+}
+
+/* ── Validation Issue Cards in Inspector ──────────────────────── */
+.val-report-box {
+  border-radius: var(--r-sm);
+  padding: 12px;
+  margin-bottom: 14px;
+  border: 1px solid var(--c-border);
+  background: var(--c-surface-2);
+}
+.val-report-box.has-error {
+  border-color: rgba(239, 68, 68, 0.4);
+  background: rgba(239, 68, 68, 0.05);
+}
+.val-report-box.has-warning {
+  border-color: rgba(245, 158, 11, 0.4);
+  background: rgba(245, 158, 11, 0.05);
+}
+.val-report-box.all-ok {
+  border-color: rgba(16, 185, 129, 0.4);
+  background: rgba(16, 185, 129, 0.05);
+}
+
+.val-issue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+.val-issue-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: var(--r-xs);
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  font-size: 0.78rem;
+}
+.val-issue-card.severity-error {
+  border-left: 3px solid #ef4444;
+}
+.val-issue-card.severity-warning {
+  border-left: 3px solid #f59e0b;
+}
+.val-issue-card.severity-info {
+  border-left: 3px solid #3b82f6;
+}
+
+.val-issue-meta {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+  font-size: 0.72rem;
+  color: var(--t-3);
+  flex-wrap: wrap;
+}
+.val-pill {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+}
+.val-focus-btn {
+  margin-left: auto;
+  font-size: 0.70rem;
+  padding: 2px 6px;
+  background: var(--c-surface-2);
+  border: 1px solid var(--c-border);
+  border-radius: 4px;
+  color: var(--c-brand);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.val-focus-btn:hover {
+  background: var(--c-brand);
+  color: #000;
+}
+
+/* Field highlight pulse when clicked from validation issue */
+@keyframes field-focus-flash {
+  0%   { outline: 3px solid var(--c-brand); background: rgba(16, 185, 129, 0.15); }
+  50%  { outline: 3px solid #ef4444; background: rgba(239, 68, 68, 0.15); }
+  100% { outline: 1px solid var(--c-border); background: transparent; }
+}
+.field-highlight-flash {
+  animation: field-focus-flash 1.5s ease-out;
+}
+
+/* ── Audit Trail Timeline ─────────────────────────────────────── */
+.audit-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+.audit-entry {
+  padding: 6px 10px;
+  background: var(--c-surface-2);
+  border-radius: var(--r-xs);
+  border-left: 2px solid var(--c-brand);
+  font-size: 0.74rem;
+}
+.audit-entry-header {
+  display: flex;
+  justify-content: space-between;
+  color: var(--t-3);
+  margin-bottom: 3px;
+}
+.audit-entry-diff {
+  font-family: monospace;
+  font-size: 0.70rem;
+  color: var(--t-2);
+}
+
+/* ── Override Reason Modal ────────────────────────────────────── */
+.override-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  backdrop-filter: blur(4px);
+  z-index: 10000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+}
+.override-overlay.open {
+  display: flex;
+}
+.override-box {
+  width: 90%;
+  max-width: 480px;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: var(--r-md);
+  box-shadow: var(--shadow-lg);
+  padding: 20px;
+}
 
 /* ── Buttons: consistent vocabulary, all states (Impeccable: operate.md) ── */
 .btn {
