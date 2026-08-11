@@ -356,19 +356,24 @@ class SQLiteInvoiceRepository:
             "display_order": row["display_order"],
         }
 
-    def save_batch(self, batch_id: str, items: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def save_batch(self, batch_id: str, items: List[Dict[str, Any]], workspace_id: str = "default-ws") -> Dict[str, Any]:
         now = datetime.now().isoformat()
         with closing(self._get_connection()) as conn:
-            conn.execute("INSERT OR REPLACE INTO batches (batch_id, created_at) VALUES (?, ?)", (batch_id, now))
+            conn.execute(
+                "INSERT OR REPLACE INTO batches (batch_id, workspace_id, created_at) VALUES (?, ?, ?)",
+                (batch_id, workspace_id, now),
+            )
             for item in items:
                 conn.execute("""
                     INSERT OR REPLACE INTO invoice_items (
-                        file_id, batch_id, file_name, media_type, size_bytes, storage_uri,
-                        status, extraction_json, warnings_json, errors_json, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        file_id, batch_id, workspace_id, file_name, media_type, size_bytes,
+                        storage_uri, status, extraction_json, warnings_json, errors_json,
+                        validation_status, validation_errors_json, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     item["file_id"],
                     batch_id,
+                    workspace_id,
                     item["file_name"],
                     item.get("media_type", "application/pdf"),
                     item.get("size_bytes", 0),
@@ -377,7 +382,9 @@ class SQLiteInvoiceRepository:
                     json.dumps(item.get("extraction", {})),
                     json.dumps(item.get("warnings", [])),
                     json.dumps(item.get("errors", [])),
-                    now
+                    item.get("validation_status", "pending"),
+                    json.dumps(item.get("validation_errors", [])),
+                    now,
                 ))
             conn.commit()
         return self.get_batch(batch_id)
@@ -418,13 +425,54 @@ class SQLiteInvoiceRepository:
                     "extraction": extraction,
                     "warnings": json.loads(r["warnings_json"] or "[]"),
                     "errors": json.loads(r["errors_json"] or "[]"),
+                    "validation_status": r["validation_status"] if "validation_status" in r.keys() else "pending",
+                    "validation_errors": json.loads(r["validation_errors_json"] or "[]") if "validation_errors_json" in r.keys() else [],
                 })
 
             return {
                 "batch_id": batch_row["batch_id"],
                 "created_at": batch_row["created_at"],
+                "workspace_id": batch_row["workspace_id"] if "workspace_id" in batch_row.keys() else "default-ws",
                 "items": items,
             }
+
+    def check_duplicate(
+        self,
+        supplier_tax_id: Optional[str],
+        invoice_series: Optional[str],
+        invoice_number: Optional[str],
+        invoice_date: Optional[str],
+        exclude_file_id: Optional[str] = None,
+    ) -> bool:
+        """Return True if a matching invoice already exists in the database.
+
+        Match criteria: same supplier_tax_id + invoice_number (minimum).
+        invoice_series and invoice_date refine the match when present.
+        exclude_file_id allows re-checking the same file on update.
+        """
+        if not supplier_tax_id or not invoice_number:
+            return False
+        with closing(self._get_connection()) as conn:
+            rows = conn.execute(
+                "SELECT file_id, extraction_json FROM invoice_items",
+            ).fetchall()
+        for row in rows:
+            if exclude_file_id and row["file_id"] == exclude_file_id:
+                continue
+            try:
+                ext = json.loads(row["extraction_json"] or "{}")
+            except Exception:
+                continue
+            if ext.get("supplier_tax_id") != supplier_tax_id:
+                continue
+            if ext.get("invoice_number") != invoice_number:
+                continue
+            if invoice_series and ext.get("invoice_series") and ext.get("invoice_series") != invoice_series:
+                continue
+            if invoice_date and ext.get("invoice_date") and ext.get("invoice_date") != invoice_date:
+                continue
+            return True
+        return False
 
     def list_all_batches(
         self,

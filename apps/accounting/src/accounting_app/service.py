@@ -3,10 +3,16 @@
 This module is the single orchestration path used by the HTTP API.  It keeps
 transport concerns (FastAPI/UploadFile) outside the accounting workflow and
 preserves per-document failure isolation.
+
+Slice-3 changes:
+- validate_invoice() is called automatically after each extraction.
+- validation_status and validation_errors are stored alongside extraction data.
+- A duplicate_checker is wired via the repository's check_duplicate() method.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from copy import deepcopy
@@ -17,7 +23,8 @@ from typing import Any, Callable, Collection, Iterable, Mapping
 from platform_core.domain import FileReference
 
 from accounting_app.persistence import SQLiteInvoiceRepository
-from accounting_app.schema import INVOICE_SCHEMA_V1, SCHEMA_VERSION
+from accounting_app.schema import INVOICE_SCHEMA_V2 as INVOICE_SCHEMA_V1, SCHEMA_VERSION
+from accounting_app.validator import validate_invoice
 
 logger = logging.getLogger(__name__)
 
@@ -122,6 +129,25 @@ class AccountingBatchService:
                     schema=schema,
                     raw_bytes=upload.content,
                 )
+
+                # ── Validation (Slice 3) ─────────────────────────────────
+                def _dup_checker(mst, series, number, inv_date):
+                    return self.repository.check_duplicate(
+                        supplier_tax_id=mst,
+                        invoice_series=series,
+                        invoice_number=number,
+                        invoice_date=inv_date,
+                        exclude_file_id=file_id,
+                    )
+
+                val_issues = validate_invoice(
+                    extraction.values,
+                    duplicate_checker=_dup_checker,
+                )
+                val_errors = [i.to_dict() for i in val_issues if i.severity == "error"]
+                val_warnings = [i.to_dict() for i in val_issues if i.severity in ("warning", "info")]
+                validation_status = "error" if val_errors else ("warning" if val_warnings else "ok")
+
                 item = {
                     "file_id": file_id,
                     "file_name": upload.name,
@@ -130,8 +156,10 @@ class AccountingBatchService:
                     "storage_uri": storage_uri,
                     "status": "needs_review",
                     "extraction": extraction.values,
-                    "warnings": list(extraction.warnings),
+                    "warnings": list(extraction.warnings) + [w["message"] for w in val_warnings],
                     "errors": [],
+                    "validation_status": validation_status,
+                    "validation_errors": val_errors + val_warnings,
                 }
             except Exception as exc:  # one bad document must not fail the batch
                 logger.error("Failed to process %s: %s", upload.name, exc, exc_info=True)
@@ -145,6 +173,8 @@ class AccountingBatchService:
                     "extraction": {},
                     "warnings": [f"Document processing failed: {type(exc).__name__}"],
                     "errors": [str(exc)[:200]],
+                    "validation_status": "error",
+                    "validation_errors": [],
                 }
             items.append(item)
 
