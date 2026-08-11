@@ -2,7 +2,14 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { applyConfirmedUpdate, updateInvoiceStatus, normalizeLineItems } = require('../src/state-sync.js');
+const {
+  applyConfirmedUpdate,
+  updateInvoiceStatus,
+  normalizeLineItems,
+  optionalString,
+  optionalNumber,
+  normalizeEditableLineItem,
+} = require('../src/state-sync.js');
 
 
 test('does not mutate target when persistence fails', async () => {
@@ -104,3 +111,20 @@ test('preserves extracted line items', () => {
   assert.deepEqual(normalizeLineItems(items), items);
 });
 
+
+test('optional form values preserve missing data as null', () => {
+  assert.equal(optionalString('  '), null);
+  assert.equal(optionalString(' VND '), 'VND');
+  assert.equal(optionalNumber(''), null);
+  assert.equal(optionalNumber('not-a-number'), null);
+  assert.equal(optionalNumber('0'), 0);
+});
+
+
+test('editable line items do not invent accounting values', () => {
+  assert.equal(normalizeEditableLineItem({}), null);
+  assert.deepEqual(
+    normalizeEditableLineItem({ description: 'Dịch vụ', quantity: '', unit_price: '', amount: '0' }),
+    { description: 'Dịch vụ', quantity: null, unit_price: null, amount: 0 },
+  );
+});

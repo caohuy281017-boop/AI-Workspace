@@ -20,9 +20,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Collection, Iterable, Mapping
 
-from platform_core.domain import FileReference
+from platform_core.domain import ContentBlock, FileReference, ParsedDocument
 
 from accounting_app.persistence import SQLiteInvoiceRepository
+from accounting_app.router import classify_document
 from accounting_app.schema import INVOICE_SCHEMA_V2 as INVOICE_SCHEMA_V1, SCHEMA_VERSION
 from accounting_app.validator import validate_invoice
 
@@ -96,16 +97,16 @@ class AccountingBatchService:
             file_id = f"file-{uuid.uuid4().hex[:6]}"
             storage_uri: str | None = None
             try:
-                allowed_extensions = self.allowed_media_types.get(upload.media_type)
-                extension = Path(upload.safe_name).suffix.lower()
-                if not allowed_extensions or extension not in allowed_extensions:
-                    raise ValueError(
-                        "Unsupported media type or filename extension mismatch."
-                    )
                 if len(upload.content) > self.max_file_bytes:
                     raise ValueError(
                         f"File exceeds the {self.max_file_bytes // (1024 * 1024)} MiB limit."
                     )
+
+                doc_type = classify_document(
+                    filename=upload.safe_name,
+                    declared_media_type=upload.media_type,
+                    content=upload.content,
+                )
 
                 raw_path = (self.storage_dir / f"{file_id}_{upload.safe_name}").resolve()
                 if not raw_path.is_relative_to(self.storage_dir):
@@ -117,11 +118,20 @@ class AccountingBatchService:
                     file_id=file_id,
                     workspace_id=workspace_id,
                     name=upload.name,
-                    media_type=upload.media_type,
+                    media_type=doc_type.media_type,
                     size_bytes=len(upload.content),
                     storage_uri=storage_uri,
                 )
-                document = self.parser.parse(source, upload.content)
+
+                if doc_type.is_image:
+                    document = ParsedDocument(
+                        source=source,
+                        blocks=(),
+                        parser="image-direct",
+                    )
+                else:
+                    document = self.parser.parse(source, upload.content)
+
                 extraction = extractor.extract(
                     document,
                     schema_name="invoice_schema",

@@ -127,7 +127,7 @@ def test_bad_file_does_not_prevent_good_file_processing(tmp_path):
         "/api/v1/accounting/batches",
         files=[
             ("files", ("bad.pdf", b"bad", "application/pdf")),
-            ("files", ("good.pdf", b"good", "application/pdf")),
+            ("files", ("good.pdf", b"%PDF-1.4 good", "application/pdf")),
         ],
     )
 
@@ -140,7 +140,7 @@ def test_bad_file_does_not_prevent_good_file_processing(tmp_path):
 
 def test_original_file_is_downloaded_from_configured_storage(tmp_path):
     client, repo = make_client(tmp_path, parser=SelectiveParser(), extractor=FixedExtractor())
-    content = b"original invoice bytes"
+    content = b"%PDF-1.4 original invoice bytes"
 
     upload = client.post(
         "/api/v1/accounting/batches",

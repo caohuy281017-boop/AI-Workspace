@@ -17,31 +17,19 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
-const optionalString = (val) => {
-  if (val == null) return null;
-  const s = String(val).trim();
-  return s === '' ? null : s;
-};
-
-const optionalNumber = (val) => {
-  if (val == null) return null;
-  const s = String(val).trim();
-  if (s === '') return null;
-  const n = Number(s);
-  return isNaN(n) ? null : n;
-};
+const { optionalString, optionalNumber, normalizeEditableLineItem } = window.StateSync;
 
 function normalizeLineItems(items) {
   if (Array.isArray(items) && items.length > 0) {
     return items.map((it) => {
       if (typeof it === 'string') {
-        return { desc: it, qty: 1, price: 0, amt: 0 };
+        return { desc: it, qty: null, price: null, amt: null };
       }
       return {
-        desc: it.description || it.desc || 'Hàng hóa / Dịch vụ',
-        qty: parseFloat(it.quantity || it.qty || 1) || 1,
-        price: parseFloat(it.unit_price || it.price || 0) || 0,
-        amt: parseFloat(it.amount || it.amt || 0) || 0,
+        desc: optionalString(it.description ?? it.desc),
+        qty: optionalNumber(it.quantity ?? it.qty),
+        price: optionalNumber(it.unit_price ?? it.price),
+        amt: optionalNumber(it.amount ?? it.amt),
       };
     });
   }
@@ -342,7 +330,7 @@ async function loadBatchesFromBackend() {
               series: ext.invoice_series || '',
               num: ext.invoice_number || '',
               date: ext.invoice_date || '',
-              currency: ext.currency || 'VND',
+              currency: ext.currency || '',
               sub: ext.subtotal != null ? ext.subtotal : '',
               discount: ext.discount_amount != null ? ext.discount_amount : '',
               fees: ext.fees != null ? ext.fees : '',
@@ -421,7 +409,7 @@ async function uploadRealFiles(files) {
           series: ext.invoice_series || '',
           num: ext.invoice_number || '',
           date: ext.invoice_date || '',
-          currency: ext.currency || 'VND',
+          currency: ext.currency || '',
           sub: ext.subtotal != null ? ext.subtotal : '',
           discount: ext.discount_amount != null ? ext.discount_amount : '',
           fees: ext.fees != null ? ext.fees : '',
@@ -563,10 +551,10 @@ function addLineItemRow(itemData = {}) {
   const ll = document.getElementById('line-items-list');
   if (!ll) return;
 
-  const desc = itemData.desc || itemData.description || '';
-  const qty  = itemData.qty || itemData.quantity || 1;
-  const price = itemData.price || itemData.unit_price || 0;
-  const amt  = itemData.amt || itemData.amount || (qty * price);
+  const desc = itemData.desc ?? itemData.description ?? '';
+  const qty  = itemData.qty ?? itemData.quantity ?? '';
+  const price = itemData.price ?? itemData.unit_price ?? '';
+  const amt  = itemData.amt ?? itemData.amount ?? '';
 
   const row = document.createElement('div');
   row.className = 'line-item-row';
@@ -585,9 +573,9 @@ function addLineItemRow(itemData = {}) {
   const amtInput   = row.querySelector('.item-amt');
 
   const calc = () => {
-    const q = parseFloat(qtyInput.value) || 0;
-    const p = parseFloat(priceInput.value) || 0;
-    amtInput.value = (q * p).toFixed(0);
+    const q = optionalNumber(qtyInput.value);
+    const p = optionalNumber(priceInput.value);
+    amtInput.value = q == null || p == null ? '' : String(q * p);
     recalcInspectorTotals();
   };
 
@@ -599,17 +587,15 @@ function addLineItemRow(itemData = {}) {
 function recalcInspectorTotals() {
   const rows = document.querySelectorAll('#line-items-list .line-item-row');
   let subtotal = 0;
+  let hasAmount = false;
   rows.forEach(r => {
-    const amt = parseFloat(r.querySelector('.item-amt').value) || 0;
-    subtotal += amt;
+    const amt = optionalNumber(r.querySelector('.item-amt').value);
+    if (amt != null) {
+      subtotal += amt;
+      hasAmount = true;
+    }
   });
-  if (subtotal > 0) {
-    const vat = Math.round(subtotal * 0.08);
-    const total = subtotal + vat;
-    setVal('f-subtotal', subtotal);
-    setVal('f-vat', vat);
-    setVal('f-total', total);
-  }
+  setVal('f-subtotal', hasAmount ? subtotal : '');
 }
 
 // ── Custom fields ─────────────────────────────────────
@@ -972,7 +958,7 @@ function openInspector(id) {
   setVal('f-inv-template', e.template || '');
   setVal('f-inv-num', e.num);
   setVal('f-inv-date', e.date);
-  setVal('f-currency', e.currency || 'VND');
+  setVal('f-currency', e.currency || '');
   setVal('f-subtotal', e.sub);
   setVal('f-discount', e.discount || '');
   setVal('f-fees', e.fees || '');
@@ -995,9 +981,7 @@ function openInspector(id) {
   const ll = document.getElementById('line-items-list');
   ll.innerHTML = '';
   const items = normalizeLineItems(e.items);
-  if (items.length === 0) {
-    addLineItemRow({ desc: `Cung cấp dịch vụ / Hàng hóa theo ${inv.file}`, qty: 1, price: e.sub || 0, amt: e.sub || 0 });
-  } else {
+  if (items.length > 0) {
     items.forEach(it => addLineItemRow(it));
   }
 
@@ -1069,7 +1053,7 @@ async function saveInspector() {
   const invoice_template_number = optionalString(document.getElementById('f-inv-template')?.value);
   const invoice_number = optionalString(document.getElementById('f-inv-num')?.value);
   const invoice_date = optionalString(document.getElementById('f-inv-date')?.value);
-  const currency = optionalString(document.getElementById('f-currency')?.value) || 'VND';
+  const currency = optionalString(document.getElementById('f-currency')?.value);
   const subtotal = optionalNumber(document.getElementById('f-subtotal')?.value);
   const discount_amount = optionalNumber(document.getElementById('f-discount')?.value);
   const fees = optionalNumber(document.getElementById('f-fees')?.value);
@@ -1080,18 +1064,13 @@ async function saveInspector() {
 
   const items = [];
   document.querySelectorAll('#line-items-list .line-item-row').forEach(r => {
-    const desc = optionalString(r.querySelector('.item-desc')?.value);
-    const qty = optionalNumber(r.querySelector('.item-qty')?.value);
-    const price = optionalNumber(r.querySelector('.item-price')?.value);
-    const amt = optionalNumber(r.querySelector('.item-amt')?.value);
-    if (desc != null || qty != null || price != null || amt != null) {
-      items.push({
-        description: desc || 'Hàng hóa / Dịch vụ',
-        quantity: qty != null ? qty : 1,
-        unit_price: price != null ? price : 0,
-        amount: amt != null ? amt : 0
-      });
-    }
+    const item = normalizeEditableLineItem({
+      description: r.querySelector('.item-desc')?.value,
+      quantity: r.querySelector('.item-qty')?.value,
+      unit_price: r.querySelector('.item-price')?.value,
+      amount: r.querySelector('.item-amt')?.value,
+    });
+    if (item) items.push(item);
   });
 
   const updates = {
@@ -1114,25 +1093,6 @@ async function saveInspector() {
     note
   };
 
-  // Sync to local state
-  inv.ext.supplier = supplier_name;
-  inv.ext.tax = supplier_tax_id;
-  inv.ext.buyer_name = buyer_name;
-  inv.ext.buyer_tax = buyer_tax_id;
-  inv.ext.series = invoice_series;
-  inv.ext.template = invoice_template_number;
-  inv.ext.num = invoice_number;
-  inv.ext.date = invoice_date;
-  inv.ext.currency = currency;
-  inv.ext.sub = subtotal;
-  inv.ext.discount = discount_amount;
-  inv.ext.fees = fees;
-  inv.ext.vat = tax_amount;
-  inv.ext.total = total_amount;
-  inv.ext.items = items;
-  inv.invoice_type = invoice_type;
-  inv.note = note;
-
   const issues = (inv.validation_errors || []).concat((inv.warnings || []).map(w => ({message: w, severity: 'warning'})));
   if (issues.length > 0) {
     openOverrideModal(inv.batch_id, inv.id, updates, true);
@@ -1152,7 +1112,25 @@ async function saveInspector() {
   );
 
   if (ok) {
-    inv.status = 'approved';
+    Object.assign(inv.ext, {
+      supplier: supplier_name,
+      tax: supplier_tax_id,
+      buyer_name,
+      buyer_tax: buyer_tax_id,
+      series: invoice_series,
+      template: invoice_template_number,
+      num: invoice_number,
+      date: invoice_date,
+      currency,
+      sub: subtotal,
+      discount: discount_amount,
+      fees,
+      vat: tax_amount,
+      total: total_amount,
+      items,
+    });
+    inv.invoice_type = invoice_type;
+    inv.note = note;
     closeInspector();
     recalcStats();
     renderTable();

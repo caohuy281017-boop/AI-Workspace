@@ -10,7 +10,109 @@ from __future__ import annotations
 import re
 import unicodedata
 from dataclasses import dataclass
-from typing import Any, Optional
+from pathlib import Path
+from typing import Any, Literal, Optional
+
+DocumentFormat = Literal["pdf", "jpeg", "png", "webp", "tiff"]
+
+SUPPORTED_EXTENSIONS = {
+    "pdf": {".pdf"},
+    "jpeg": {".jpg", ".jpeg"},
+    "png": {".png"},
+    "webp": {".webp"},
+    "tiff": {".tif", ".tiff"},
+}
+
+CANONICAL_MIME_TYPES = {
+    "pdf": "application/pdf",
+    "jpeg": "image/jpeg",
+    "png": "image/png",
+    "webp": "image/webp",
+    "tiff": "image/tiff",
+}
+
+EXTENSION_TO_FORMAT = {
+    ".pdf": "pdf",
+    ".jpg": "jpeg",
+    ".jpeg": "jpeg",
+    ".png": "png",
+    ".webp": "webp",
+    ".tif": "tiff",
+    ".tiff": "tiff",
+}
+
+MIME_TO_FORMAT = {
+    "application/pdf": "pdf",
+    "image/jpeg": "jpeg",
+    "image/jpg": "jpeg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/tiff": "tiff",
+    "image/tif": "tiff",
+}
+
+
+@dataclass(frozen=True, slots=True)
+class DocumentType:
+    format: DocumentFormat
+    media_type: str
+    is_image: bool
+
+
+def detect_magic_format(content: bytes) -> DocumentFormat | None:
+    """Detect format from magic bytes/signature."""
+    if content.startswith(b"%PDF-"):
+        return "pdf"
+    if content.startswith(b"\xFF\xD8\xFF"):
+        return "jpeg"
+    if content.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "png"
+    if len(content) >= 12 and content[:4] == b"RIFF" and content[8:12] == b"WEBP":
+        return "webp"
+    if content.startswith((b"II*\x00", b"MM\x00*")):
+        return "tiff"
+    return None
+
+
+def classify_document(
+    filename: str,
+    declared_media_type: str,
+    content: bytes,
+) -> DocumentType:
+    """Classify document by verifying MIME type, filename extension, and magic bytes.
+
+    Raises ValueError with FILE_TYPE_MISMATCH if any source is inconsistent.
+    """
+    ext = Path(filename).suffix.lower()
+    ext_format = EXTENSION_TO_FORMAT.get(ext)
+    clean_mime = (declared_media_type or "").lower().split(";")[0].strip()
+    mime_format = MIME_TO_FORMAT.get(clean_mime)
+    magic_format = detect_magic_format(content)
+
+    if not ext_format:
+        raise ValueError(f"FILE_TYPE_MISMATCH: Unsupported file extension '{ext}' for file '{filename}'")
+
+    if not mime_format:
+        raise ValueError(f"FILE_TYPE_MISMATCH: Unsupported declared MIME type '{declared_media_type}' for file '{filename}'")
+
+    if not magic_format:
+        raise ValueError(f"FILE_TYPE_MISMATCH: File '{filename}' content does not match any recognized signature (PDF, JPEG, PNG, WEBP, TIFF)")
+
+    if not (ext_format == mime_format == magic_format):
+        raise ValueError(
+            f"FILE_TYPE_MISMATCH: Inconsistent file attributes for '{filename}'. "
+            f"Extension suggests '{ext_format}', declared MIME suggests '{mime_format}', "
+            f"but magic bytes indicate '{magic_format}'."
+        )
+
+    canonical_mime = CANONICAL_MIME_TYPES[magic_format]
+    is_image = magic_format in {"jpeg", "png", "webp", "tiff"}
+
+    return DocumentType(
+        format=magic_format,
+        media_type=canonical_mime,
+        is_image=is_image,
+    )
 
 
 # Invoice-specific landmark keywords in Vietnamese and English

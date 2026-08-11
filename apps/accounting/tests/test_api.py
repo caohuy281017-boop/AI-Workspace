@@ -34,8 +34,8 @@ class TestAccountingBatchAPI(unittest.TestCase):
         self.temp_dir.cleanup()
 
     def test_batch_upload_creates_batch(self):
-        file1 = ("invoice1.pdf", b"fake pdf content 1", "application/pdf")
-        file2 = ("invoice2.pdf", b"fake pdf content 2", "application/pdf")
+        file1 = ("invoice1.pdf", b"%PDF-1.4 fake pdf content 1", "application/pdf")
+        file2 = ("invoice2.pdf", b"%PDF-1.4 fake pdf content 2", "application/pdf")
         
         response = self.client.post(
             "/api/v1/accounting/batches",
@@ -49,7 +49,7 @@ class TestAccountingBatchAPI(unittest.TestCase):
 
     def test_get_batch_returns_details_and_stats(self):
         # First upload a file to create a batch
-        file1 = ("inv.pdf", b"pdf content", "application/pdf")
+        file1 = ("inv.pdf", b"%PDF-1.4 pdf content", "application/pdf")
         res = self.client.post("/api/v1/accounting/batches", files=[("files", file1)])
         batch_id = res.json()["batch_id"]
 
@@ -61,7 +61,7 @@ class TestAccountingBatchAPI(unittest.TestCase):
         self.assertEqual(data["stats"]["total_files"], 1)
 
     def test_patch_item_updates_extracted_fields(self):
-        file1 = ("inv.pdf", b"pdf content", "application/pdf")
+        file1 = ("inv.pdf", b"%PDF-1.4 pdf content", "application/pdf")
         res = self.client.post("/api/v1/accounting/batches", files=[("files", file1)])
         batch_id = res.json()["batch_id"]
         file_id = res.json()["items"][0]["file_id"]
@@ -83,7 +83,7 @@ class TestAccountingBatchAPI(unittest.TestCase):
         self.assertEqual(updated["status"], "approved")
 
     def test_export_batch_returns_xlsx_file(self):
-        file1 = ("inv.pdf", b"pdf content", "application/pdf")
+        file1 = ("inv.pdf", b"%PDF-1.4 pdf content", "application/pdf")
         res = self.client.post("/api/v1/accounting/batches", files=[("files", file1)])
         batch_id = res.json()["batch_id"]
         file_id = res.json()["items"][0]["file_id"]
@@ -104,7 +104,7 @@ class TestAccountingBatchAPI(unittest.TestCase):
 
     def test_export_all_batches_multi_batch(self):
         # Create Batch 1
-        res1 = self.client.post("/api/v1/accounting/batches", files=[("files", ("inv1.pdf", b"pdf 1", "application/pdf"))])
+        res1 = self.client.post("/api/v1/accounting/batches", files=[("files", ("inv1.pdf", b"%PDF-1.4 pdf 1", "application/pdf"))])
         b1_id = res1.json()["batch_id"]
         f1_id = res1.json()["items"][0]["file_id"]
         self.client.patch(
@@ -113,7 +113,7 @@ class TestAccountingBatchAPI(unittest.TestCase):
         )
 
         # Create Batch 2
-        res2 = self.client.post("/api/v1/accounting/batches", files=[("files", ("inv2.pdf", b"pdf 2", "application/pdf"))])
+        res2 = self.client.post("/api/v1/accounting/batches", files=[("files", ("inv2.pdf", b"%PDF-1.4 pdf 2", "application/pdf"))])
         b2_id = res2.json()["batch_id"]
         f2_id = res2.json()["items"][0]["file_id"]
         self.client.patch(

@@ -134,3 +134,168 @@ def test_routing_decision_to_dict_serialization():
     assert d["text_quality_score"] == 0.923
     assert d["char_count"] == 450
     assert d["has_scanned_indicator"] is False
+
+
+from accounting_app.router import classify_document, detect_magic_format
+from accounting_app.service import AccountingBatchService, UploadedInvoice
+from accounting_app.job_worker import JobWorker
+from accounting_app.persistence import SQLiteInvoiceRepository
+from accounting_app.pdf_parser import PDFTextParser
+from accounting_app.smart_extractor import SmartInvoiceExtractor
+from platform_core.domain import ContentBlock, FileReference, ParsedDocument
+
+
+def test_classify_document_valid_types():
+    pdf_res = classify_document("invoice.pdf", "application/pdf", b"%PDF-1.4 sample content")
+    assert pdf_res.format == "pdf"
+    assert pdf_res.media_type == "application/pdf"
+    assert pdf_res.is_image is False
+
+    jpg_res = classify_document("bill.jpg", "image/jpeg", b"\xFF\xD8\xFF\xE0 sample jpeg")
+    assert jpg_res.format == "jpeg"
+    assert jpg_res.media_type == "image/jpeg"
+    assert jpg_res.is_image is True
+
+    png_res = classify_document("doc.png", "image/png", b"\x89PNG\r\n\x1a\n\x00 sample png")
+    assert png_res.format == "png"
+    assert png_res.media_type == "image/png"
+    assert png_res.is_image is True
+
+    webp_res = classify_document("doc.webp", "image/webp", b"RIFF\x00\x00\x00\x00WEBPVP8 sample")
+    assert webp_res.format == "webp"
+    assert webp_res.media_type == "image/webp"
+    assert webp_res.is_image is True
+
+    tiff_res = classify_document("doc.tiff", "image/tiff", b"II*\x00 sample tiff")
+    assert tiff_res.format == "tiff"
+    assert tiff_res.media_type == "image/tiff"
+    assert tiff_res.is_image is True
+
+
+def test_classify_document_mismatches_rejected():
+    # 1. .jpg with PDF bytes
+    with pytest.raises(ValueError, match="FILE_TYPE_MISMATCH"):
+        classify_document("invoice.jpg", "image/jpeg", b"%PDF-1.4 fake pdf inside jpg")
+
+    # 2. .pdf with JPEG bytes
+    with pytest.raises(ValueError, match="FILE_TYPE_MISMATCH"):
+        classify_document("invoice.pdf", "application/pdf", b"\xFF\xD8\xFF fake jpg inside pdf")
+
+    # 3. MIME application/pdf with JPG bytes
+    with pytest.raises(ValueError, match="FILE_TYPE_MISMATCH"):
+        classify_document("invoice.jpg", "application/pdf", b"\xFF\xD8\xFF image bytes")
+
+    # 4. Unknown extension
+    with pytest.raises(ValueError, match="FILE_TYPE_MISMATCH"):
+        classify_document("invoice.exe", "application/octet-stream", b"MZ fake exe")
+
+
+class MockParserSpy:
+    def __init__(self):
+        self.called_count = 0
+
+    def parse(self, source, content):
+        self.called_count += 1
+        return ParsedDocument(source=source, blocks=(), parser="mock-pdf-parser")
+
+
+class MockExtractorSpy:
+    def extract(self, document, schema_name, schema_version, schema, raw_bytes):
+        from platform_core.domain import ExtractionResult
+        return ExtractionResult(
+            source_file_id=document.source.file_id,
+            schema_name=schema_name,
+            schema_version=schema_version,
+            values={"supplier_name": "Test Co", "total_amount": 1000.0},
+            provider="mock-extractor",
+            warnings=(),
+        )
+
+
+def test_image_does_not_call_pdf_parser_in_service(tmp_path):
+    repo = SQLiteInvoiceRepository(str(tmp_path / "test.db"))
+    parser_spy = MockParserSpy()
+    service = AccountingBatchService(
+        repository=repo,
+        storage_dir=tmp_path / "storage",
+        parser=parser_spy,
+        extractor_factory=lambda *_args, **_kwargs: MockExtractorSpy(),
+        allowed_media_types={"image/jpeg": {".jpg", ".jpeg"}, "application/pdf": {".pdf"}},
+        max_file_bytes=10 * 1024 * 1024,
+    )
+
+    uploads = [
+        UploadedInvoice(
+            name="receipt.jpg",
+            safe_name="receipt.jpg",
+            media_type="image/jpeg",
+            content=b"\xFF\xD8\xFF\xE0 sample jpeg bytes",
+        )
+    ]
+    batch = service.create_batch(uploads)
+    assert len(batch["items"]) == 1
+    assert parser_spy.called_count == 0  # CRITICAL: PDF parser was NOT called for image!
+
+
+def test_pdf_calls_pdf_parser_in_service(tmp_path):
+    repo = SQLiteInvoiceRepository(str(tmp_path / "test.db"))
+    parser_spy = MockParserSpy()
+    service = AccountingBatchService(
+        repository=repo,
+        storage_dir=tmp_path / "storage",
+        parser=parser_spy,
+        extractor_factory=lambda *_args, **_kwargs: MockExtractorSpy(),
+        allowed_media_types={"application/pdf": {".pdf"}},
+        max_file_bytes=10 * 1024 * 1024,
+    )
+
+    uploads = [
+        UploadedInvoice(
+            name="invoice.pdf",
+            safe_name="invoice.pdf",
+            media_type="application/pdf",
+            content=b"%PDF-1.4 sample valid pdf bytes",
+        )
+    ]
+    batch = service.create_batch(uploads)
+    assert len(batch["items"]) == 1
+    assert parser_spy.called_count == 1  # PDF parser WAS called for valid PDF
+
+
+def test_sync_service_and_worker_have_consistent_decisions(tmp_path, caplog):
+    repo = SQLiteInvoiceRepository(str(tmp_path / "test.db"))
+    parser_spy = MockParserSpy()
+    storage_dir = tmp_path / "storage"
+    storage_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Process via sync service
+    service = AccountingBatchService(
+        repository=repo,
+        storage_dir=storage_dir,
+        parser=parser_spy,
+        extractor_factory=lambda *_args, **_kwargs: MockExtractorSpy(),
+        allowed_media_types={"image/png": {".png"}},
+        max_file_bytes=10 * 1024 * 1024,
+    )
+    png_bytes = b"\x89PNG\r\n\x1a\n sample png"
+    batch = service.create_batch([
+        UploadedInvoice(name="photo.png", safe_name="photo.png", media_type="image/png", content=png_bytes)
+    ])
+    item_id = batch["items"][0]["file_id"]
+
+    # 2. Process via background worker
+    worker = JobWorker(
+        repository=repo,
+        storage_dir=storage_dir,
+        parser=parser_spy,
+        extractor=MockExtractorSpy(),
+        worker_id="test-w1",
+    )
+    repo.enqueue_job(batch_id=batch["batch_id"], file_id=item_id)
+    job = repo.claim_next_job("test-w1")
+    assert job is not None
+    success = worker.process_job(job)
+
+    assert success is True
+    assert parser_spy.called_count == 0  # Both bypassed PDF parser completely!
+    assert "PDF parsing failed" not in caplog.text

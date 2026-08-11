@@ -22,7 +22,7 @@ from platform_core.domain import ContentBlock, FileReference, ParsedDocument
 from accounting_app.persistence import SQLiteInvoiceRepository
 from accounting_app.pdf_parser import PDFTextParser
 from accounting_app.smart_extractor import SmartInvoiceExtractor
-from accounting_app.router import assess_text_quality
+from accounting_app.router import assess_text_quality, classify_document
 from accounting_app.validator import validate_invoice
 from accounting_app.schema import SCHEMA_NAME, SCHEMA_VERSION, INVOICE_SCHEMA_V2
 
@@ -35,24 +35,24 @@ class JobWorker:
     def __init__(
         self,
         repository: SQLiteInvoiceRepository,
+        storage_dir: Path,
         parser: PDFTextParser,
         extractor: SmartInvoiceExtractor,
-        storage_dir: Path,
         worker_id: Optional[str] = None,
-        poll_interval_seconds: float = 1.0,
         lease_seconds: int = 60,
     ) -> None:
         self.repository = repository
+        self.storage_dir = Path(storage_dir).resolve()
+        self.storage_dir.mkdir(parents=True, exist_ok=True)
         self.parser = parser
         self.extractor = extractor
-        self.storage_dir = Path(storage_dir)
-        self.worker_id = worker_id or f"worker-{uuid.uuid4().hex[:8]}"
-        self.poll_interval = poll_interval_seconds
+        self.worker_id = worker_id or f"worker-{uuid.uuid4().hex[:6]}"
         self.lease_seconds = lease_seconds
-        self._stop_event = threading.Event()
+        self._running = False
         self._thread: Optional[threading.Thread] = None
 
     def process_job(self, job: Dict[str, Any]) -> bool:
+        """Process a single claimed job. Returns True if completed, False if failed."""
         job_id = job["job_id"]
         file_id = job["file_id"]
         batch_id = job["batch_id"]
@@ -68,7 +68,7 @@ class JobWorker:
 
             storage_uri = item.get("storage_uri")
             file_name = item.get("file_name", "unknown")
-            media_type = item.get("media_type", "application/pdf")
+            declared_media_type = item.get("media_type", "application/pdf")
             file_path = Path(storage_uri) if storage_uri else self.storage_dir / file_id
 
             if not file_path.is_file():
@@ -77,41 +77,57 @@ class JobWorker:
 
             raw_bytes = file_path.read_bytes()
 
-            # 2. Parse document
-            if media_type == "application/pdf":
+            # 2. Classify document
+            try:
+                doc_type = classify_document(
+                    filename=file_name,
+                    declared_media_type=declared_media_type,
+                    content=raw_bytes,
+                )
+            except ValueError as exc:
+                logger.warning("[%s] Document classification error for %s: %s", self.worker_id, file_name, exc)
+                self.repository.fail_job(job_id, "FILE_TYPE_MISMATCH", str(exc))
+                self.repository.update_item_extraction_and_status(
+                    file_id=file_id,
+                    extraction={},
+                    warnings=[],
+                    errors=[{"message": str(exc), "code": "FILE_TYPE_MISMATCH"}],
+                    validation_status="error",
+                    validation_errors=[],
+                    status="failed",
+                )
+                return False
+
+            source_ref = FileReference(
+                file_id=file_id,
+                workspace_id=job.get("workspace_id", "default-ws"),
+                name=file_name,
+                media_type=doc_type.media_type,
+                size_bytes=len(raw_bytes),
+                storage_uri=str(file_path),
+            )
+
+            # 3. Parse document
+            if doc_type.is_image:
+                parsed_doc = ParsedDocument(
+                    source=source_ref,
+                    blocks=(),
+                    parser="image-direct",
+                )
+            else:
                 try:
-                    parsed_doc = self.parser.parse_bytes(raw_bytes, filename=file_name)
+                    parsed_doc = self.parser.parse(source_ref, raw_bytes)
                 except Exception as exc:
                     logger.warning("PDF parsing error for %s: %s", file_name, exc)
                     parsed_doc = ParsedDocument(
-                        source=FileReference(
-                            file_id=file_id,
-                            workspace_id=job.get("workspace_id", "default-ws"),
-                            name=file_name,
-                            media_type=media_type,
-                            size_bytes=len(raw_bytes),
-                            storage_uri=str(file_path),
-                        ),
-                        blocks=[ContentBlock(block_id="b0", kind="text", text=f"[Parsing fallback for {file_name}]")],
+                        source=source_ref,
+                        blocks=(ContentBlock(block_id="b0", kind="text", text=f"[Parsing fallback for {file_name}]"),),
                         parser="fallback",
                     )
-            else:
-                parsed_doc = ParsedDocument(
-                    source=FileReference(
-                        file_id=file_id,
-                        workspace_id=job.get("workspace_id", "default-ws"),
-                        name=file_name,
-                        media_type=media_type,
-                        size_bytes=len(raw_bytes),
-                        storage_uri=str(file_path),
-                    ),
-                    blocks=[],
-                    parser="image-direct",
-                )
 
-            # 3. Document routing decision
+            # 4. Document routing decision
             doc_text = "\n".join(b.text for b in parsed_doc.blocks if b.text)
-            routing = assess_text_quality(doc_text, media_type=media_type, filename=file_name)
+            routing = assess_text_quality(doc_text, media_type=doc_type.media_type, filename=file_name)
 
             # Heartbeat lease
             self.repository.heartbeat_job(job_id, self.worker_id, extend_seconds=self.lease_seconds)
