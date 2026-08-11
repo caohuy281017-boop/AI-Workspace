@@ -245,7 +245,7 @@
       <div class="drop-zone" id="drop-zone">
         <div class="drop-zone-icon">📤</div>
         <h3>Kéo thả lô file Hóa đơn vào đây</h3>
-        <p>Hỗ trợ PDF, PNG, JPG, TIFF — AI sẽ tự động trích xuất và đưa lên bảng kiểm duyệt</p>
+        <p>Hỗ trợ PDF, PNG, JPG, TIFF — AI sẽ tự động trích xuất và đưa lên bảng dữ liệu hóa đơn</p>
         <div class="gap-row" style="justify-content:center;">
           <button class="btn btn-primary" id="btn-upload">📁 Chọn file từ máy tính</button>
           <button class="btn btn-ghost">✨ Thêm hóa đơn mẫu</button>
@@ -255,7 +255,7 @@
       <!-- Review table -->
       <div class="section">
         <div class="section-title">
-          Bảng Kiểm duyệt Hóa đơn
+          Bảng Dữ Liệu Hóa Đơn
           <span>Click ô để sửa trực tiếp · Ctrl+K để tìm kiếm nhanh</span>
         </div>
 
@@ -265,8 +265,8 @@
           </div>
           <div class="filter-pills">
             <button class="fpill active" data-f="all">Tất cả</button>
-            <button class="fpill" data-f="needs_review">Cần soi</button>
-            <button class="fpill" data-f="approved">Đã duyệt</button>
+            <button class="fpill" data-f="needs_review">Cần kiểm tra</button>
+            <button class="fpill" data-f="approved">Đã xác nhận</button>
           </div>
           <div class="filter-pills" style="margin-left:8px; border-left:1px solid var(--c-border); padding-left:8px;">
             <button class="type-pill active" data-t="all" onclick="filterByType('all')">📋 Tất cả loại</button>
@@ -576,7 +576,7 @@
     </div>
     <div style="display:flex; justify-content:flex-end; gap:8px;">
       <button class="btn btn-ghost" onclick="closeOverrideModal()">Hủy</button>
-      <button class="btn btn-primary" onclick="confirmOverrideApprove()">✓ Xác nhận Phê duyệt</button>
+      <button class="btn btn-primary" onclick="confirmOverrideApprove()">✓ Xác nhận & Lưu</button>
     </div>
   </div>
 </div>
@@ -585,8 +585,8 @@
      EXPORT BAR
 ══════════════════════════════════════ -->
 <div class="export-bar" id="export-bar" style="display:none;">
-  <span class="export-bar-label" id="export-bar-label">2 hóa đơn đã duyệt</span>
-  <button class="btn btn-ghost btn-sm" onclick="approveAll()">✓ Duyệt tất cả</button>
+  <span class="export-bar-label" id="export-bar-label">0 hóa đơn đã xác nhận</span>
+  <button class="btn btn-ghost btn-sm" onclick="approveAll()">✓ Xác nhận tất cả</button>
   <button class="btn btn-primary btn-sm" onclick="exportExcel()">📊 Xuất Excel (.xlsx)</button>
 </div>
 

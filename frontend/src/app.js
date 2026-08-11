@@ -17,6 +17,20 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+const optionalString = (val) => {
+  if (val == null) return null;
+  const s = String(val).trim();
+  return s === '' ? null : s;
+};
+
+const optionalNumber = (val) => {
+  if (val == null) return null;
+  const s = String(val).trim();
+  if (s === '') return null;
+  const n = Number(s);
+  return isNaN(n) ? null : n;
+};
+
 function normalizeLineItems(items) {
   if (Array.isArray(items) && items.length > 0) {
     return items.map((it) => {
@@ -88,7 +102,7 @@ const STATE = {
 // ── Apps directory ─────────────────────────────────────
 const APPS = [
   { id:'hub',         icon:'🏠', title:'Trang chủ',                  desc:'Hub tổng quan tất cả công cụ' },
-  { id:'accounting',  icon:'🧾', title:'Xử lý lô Hóa đơn',           desc:'Batch invoice AI extraction & XLSX export' },
+  { id:'accounting',  icon:'🧾', title:'Kho Hóa Đơn AI',             desc:'Invoice Intelligence & Excel Export' },
   { id:'translator',  icon:'📄', title:'Dịch tài liệu',              desc:'PDF/DOCX/PPTX translation with layout preserved' },
   { id:'meeting',     icon:'🎙️', title:'Biên bản Cuộc họp',          desc:'Audio → Transcript, Summary, Action Items' },
   { id:'settings',    icon:'⚙️', title:'Cấu hình AI Engine',         desc:'Gemini, OpenAI, Ollama configuration' },
@@ -212,7 +226,7 @@ function renderTable() {
       : '';
 
     const approveBtn = inv.status === 'needs_review'
-      ? `<button class="btn btn-ghost btn-sm" onclick="approveInv('${escapeHtml(inv.batch_id)}','${escapeHtml(inv.id)}')">✓ Duyệt</button>` : '';
+      ? `<button class="btn btn-ghost btn-sm" onclick="approveInv('${escapeHtml(inv.batch_id)}','${escapeHtml(inv.id)}')">✓ Xác nhận</button>` : '';
 
     const customCells = visibleCustomFields.map(field => {
       const value = (e.customFields || {})[field.code];
@@ -510,7 +524,7 @@ async function approveAll() {
   recalcStats();
   renderTable();
   if (failedCount > 0) {
-    alert(`${failedCount} hóa đơn chưa được duyệt vì không thể đồng bộ với backend.`);
+    alert(`${failedCount} hóa đơn chưa được xác nhận vì không thể đồng bộ với backend.`);
   }
 }
 
@@ -876,6 +890,7 @@ function openOverrideModal(batchId, fileId, updates, isInspector = false) {
   const input = document.getElementById('override-reason-input');
   if (input) input.value = '';
   if (modal) modal.classList.add('open');
+  if (input) input.focus();
 }
 
 function closeOverrideModal() {
@@ -890,7 +905,7 @@ async function confirmOverrideApprove() {
   const reason = input ? input.value.trim() : '';
 
   if (!reason) {
-    alert('Vui lòng nhập lý do phê duyệt hóa đơn có cảnh báo số liệu.');
+    alert('Vui lòng nhập lý do xác nhận hóa đơn có cảnh báo số liệu.');
     if (input) input.focus();
     return;
   }
@@ -913,9 +928,25 @@ async function confirmOverrideApprove() {
     const inv = STATE.invoices.find(i => i.id === fileId);
     if (inv) {
       inv.status = 'approved';
-      if (updates.ext) inv.ext = updates.ext;
-      if (updates.invoice_type) inv.invoice_type = updates.invoice_type;
-      if (updates.note) inv.note = updates.note;
+      if (updates) {
+        if (updates.supplier_name !== undefined) inv.ext.supplier = updates.supplier_name;
+        if (updates.supplier_tax_id !== undefined) inv.ext.tax = updates.supplier_tax_id;
+        if (updates.buyer_name !== undefined) inv.ext.buyer_name = updates.buyer_name;
+        if (updates.buyer_tax_id !== undefined) inv.ext.buyer_tax = updates.buyer_tax_id;
+        if (updates.invoice_series !== undefined) inv.ext.series = updates.invoice_series;
+        if (updates.invoice_template_number !== undefined) inv.ext.template = updates.invoice_template_number;
+        if (updates.invoice_number !== undefined) inv.ext.num = updates.invoice_number;
+        if (updates.invoice_date !== undefined) inv.ext.date = updates.invoice_date;
+        if (updates.currency !== undefined) inv.ext.currency = updates.currency;
+        if (updates.subtotal !== undefined) inv.ext.sub = updates.subtotal;
+        if (updates.discount_amount !== undefined) inv.ext.discount = updates.discount_amount;
+        if (updates.fees !== undefined) inv.ext.fees = updates.fees;
+        if (updates.tax_amount !== undefined) inv.ext.vat = updates.tax_amount;
+        if (updates.total_amount !== undefined) inv.ext.total = updates.total_amount;
+        if (updates.items !== undefined) inv.ext.items = updates.items;
+        if (updates.invoice_type !== undefined) inv.invoice_type = updates.invoice_type;
+        if (updates.note !== undefined) inv.note = updates.note;
+      }
     }
     closeOverrideModal();
     if (isInspector) closeInspector();
@@ -1029,75 +1060,105 @@ function closeInspector() {
 async function saveInspector() {
   if (!STATE.inspecting) return;
   const inv = STATE.inspecting;
-  const e = inv.ext;
-  
-  e.supplier = document.getElementById('f-supplier')?.value || '';
-  e.tax = document.getElementById('f-tax-id')?.value || '';
-  e.num = document.getElementById('f-inv-num')?.value || '';
-  e.date = document.getElementById('f-inv-date')?.value || '';
-  e.currency = document.getElementById('f-currency')?.value || '';
-  e.sub = parseFloat(document.getElementById('f-subtotal')?.value) || 0;
-  e.vat = parseFloat(document.getElementById('f-vat')?.value) || 0;
-  e.total = parseFloat(document.getElementById('f-total')?.value) || 0;
-  
-  e.items = [];
+
+  const supplier_name = optionalString(document.getElementById('f-supplier')?.value);
+  const supplier_tax_id = optionalString(document.getElementById('f-tax-id')?.value);
+  const buyer_name = optionalString(document.getElementById('f-buyer-name')?.value);
+  const buyer_tax_id = optionalString(document.getElementById('f-buyer-tax')?.value);
+  const invoice_series = optionalString(document.getElementById('f-inv-series')?.value);
+  const invoice_template_number = optionalString(document.getElementById('f-inv-template')?.value);
+  const invoice_number = optionalString(document.getElementById('f-inv-num')?.value);
+  const invoice_date = optionalString(document.getElementById('f-inv-date')?.value);
+  const currency = optionalString(document.getElementById('f-currency')?.value) || 'VND';
+  const subtotal = optionalNumber(document.getElementById('f-subtotal')?.value);
+  const discount_amount = optionalNumber(document.getElementById('f-discount')?.value);
+  const fees = optionalNumber(document.getElementById('f-fees')?.value);
+  const tax_amount = optionalNumber(document.getElementById('f-vat')?.value);
+  const total_amount = optionalNumber(document.getElementById('f-total')?.value);
+  const invoice_type = document.getElementById('f-invoice-type')?.value || 'dau_vao';
+  const note = document.getElementById('f-note')?.value || '';
+
+  const items = [];
   document.querySelectorAll('#line-items-list .line-item-row').forEach(r => {
-    e.items.push({
-      description: r.querySelector('.item-desc')?.value || '',
-      quantity: parseFloat(r.querySelector('.item-qty')?.value) || 1,
-      unit_price: parseFloat(r.querySelector('.item-price')?.value) || 0,
-      amount: parseFloat(r.querySelector('.item-amt')?.value) || 0
-    });
+    const desc = optionalString(r.querySelector('.item-desc')?.value);
+    const qty = optionalNumber(r.querySelector('.item-qty')?.value);
+    const price = optionalNumber(r.querySelector('.item-price')?.value);
+    const amt = optionalNumber(r.querySelector('.item-amt')?.value);
+    if (desc != null || qty != null || price != null || amt != null) {
+      items.push({
+        description: desc || 'Hàng hóa / Dịch vụ',
+        quantity: qty != null ? qty : 1,
+        unit_price: price != null ? price : 0,
+        amount: amt != null ? amt : 0
+      });
+    }
   });
 
-  inv.invoice_type = document.getElementById('f-invoice-type')?.value || 'dau_vao';
-  inv.note = document.getElementById('f-note')?.value || '';
+  const updates = {
+    supplier_name,
+    supplier_tax_id,
+    buyer_name,
+    buyer_tax_id,
+    invoice_series,
+    invoice_template_number,
+    invoice_number,
+    invoice_date,
+    currency,
+    subtotal,
+    discount_amount,
+    fees,
+    tax_amount,
+    total_amount,
+    items,
+    invoice_type,
+    note
+  };
+
+  // Sync to local state
+  inv.ext.supplier = supplier_name;
+  inv.ext.tax = supplier_tax_id;
+  inv.ext.buyer_name = buyer_name;
+  inv.ext.buyer_tax = buyer_tax_id;
+  inv.ext.series = invoice_series;
+  inv.ext.template = invoice_template_number;
+  inv.ext.num = invoice_number;
+  inv.ext.date = invoice_date;
+  inv.ext.currency = currency;
+  inv.ext.sub = subtotal;
+  inv.ext.discount = discount_amount;
+  inv.ext.fees = fees;
+  inv.ext.vat = tax_amount;
+  inv.ext.total = total_amount;
+  inv.ext.items = items;
+  inv.invoice_type = invoice_type;
+  inv.note = note;
 
   const issues = (inv.validation_errors || []).concat((inv.warnings || []).map(w => ({message: w, severity: 'warning'})));
   if (issues.length > 0) {
-    document.getElementById('override-modal').classList.add('open');
+    openOverrideModal(inv.batch_id, inv.id, updates, true);
     return;
   }
 
-  await proceedWithApproval(inv.batch_id, inv.id, null);
-}
-
-async function proceedWithApproval(batchId, id, overrideReason) {
-  const inv = STATE.invoices.find(i => i.id === id);
-  if (!inv) return;
-  
-  const payload = { 
-    status: 'approved',
-    ext: inv.ext,
-    invoice_type: inv.invoice_type,
-    note: inv.note
+  const payload = {
+    ...updates,
+    status: 'approved'
   };
-  if (overrideReason) { payload.override_reason = overrideReason; }
-  
-  const ok = await window.StateSync.updateInvoiceStatus(id, 'approved', payload, () => updateInvoiceOnBackend(batchId, id, payload));
+
+  const ok = await window.StateSync.updateInvoiceStatus(
+    inv.id,
+    'approved',
+    { status: 'approved' },
+    () => updateInvoiceOnBackend(inv.batch_id, inv.id, payload)
+  );
+
   if (ok) {
+    inv.status = 'approved';
     closeInspector();
-    closeOverrideModal();
     recalcStats();
     renderTable();
   } else {
-    alert("Không thể lưu và xác nhận hóa đơn. Vui lòng thử lại.");
+    alert("Không thể lưu và xác nhận hóa đơn. Vui lòng kiểm tra lại kết nối.");
   }
-}
-
-function closeOverrideModal() {
-  document.getElementById('override-modal')?.classList.remove('open');
-}
-
-function confirmOverride() {
-  const reason = document.getElementById('override-reason-input')?.value?.trim();
-  if (!reason) {
-    alert("Vui lòng ghi chú lý do xác nhận.");
-    return;
-  }
-  const inv = STATE.inspecting;
-  if (!inv) return;
-  proceedWithApproval(inv.batch_id, inv.id, reason);
 }
 function selectAiProvider(provider, silent) {
   localStorage.setItem('AI_PROVIDER', provider);

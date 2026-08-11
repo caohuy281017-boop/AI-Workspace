@@ -5,7 +5,7 @@
 
 - **Chế độ kiểm thử (Mode):** `heuristics`
 - **Tổng số tài liệu kiểm thử:** 20
-- **Thời gian xử lý trung bình:** 0.64 ms / chứng từ
+- **Thời gian xử lý trung bình:** 0.85 ms / chứng từ
 - **Độ chính xác tổng thể (Field-level Accuracy):** **86.86%**
 - **Điểm chất lượng văn bản trung bình (Text Quality Score):** 0.967
 

@@ -55,6 +55,9 @@ def sanitize_upload_name(name: str) -> str:
 VALID_INVOICE_TYPES = {"dau_vao", "dau_ra", "khac"}
 
 
+from pydantic import BaseModel, field_validator, model_validator
+
+
 class InvoiceItemUpdateSchema(BaseModel):
     supplier_name: str | None = None
     supplier_tax_id: str | None = None
@@ -77,6 +80,36 @@ class InvoiceItemUpdateSchema(BaseModel):
     invoice_type: str | None = None
     note: str | None = None
     override_reason: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def extract_ext_if_present(cls, data: Any) -> Any:
+        if isinstance(data, dict) and "ext" in data and isinstance(data["ext"], dict):
+            ext = data["ext"]
+            mapping = {
+                "supplier": "supplier_name",
+                "tax": "supplier_tax_id",
+                "buyer_name": "buyer_name",
+                "buyer_tax": "buyer_tax_id",
+                "series": "invoice_series",
+                "template": "invoice_template_number",
+                "num": "invoice_number",
+                "date": "invoice_date",
+                "currency": "currency",
+                "sub": "subtotal",
+                "discount": "discount_amount",
+                "fees": "fees",
+                "vat": "tax_amount",
+                "total": "total_amount",
+                "items": "items",
+            }
+            for k, target in mapping.items():
+                if k in ext and (target not in data or data[target] is None):
+                    data[target] = ext[k]
+            for k, v in ext.items():
+                if k not in data or data[k] is None:
+                    data[k] = v
+        return data
 
     @field_validator("status")
     @classmethod
