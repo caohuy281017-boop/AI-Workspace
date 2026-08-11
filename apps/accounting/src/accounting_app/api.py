@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 import os
 import re
+import uuid
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +18,7 @@ from pydantic import BaseModel, field_validator
 
 from platform_adapters.exporters.xlsx_exporter import XLSXExportAdapter
 
+from accounting_app.job_worker import JobWorker
 from accounting_app.pdf_parser import PDFTextParser
 from accounting_app.persistence import SQLiteInvoiceRepository
 from accounting_app.service import AccountingBatchService, UploadedInvoice
@@ -261,6 +264,99 @@ def create_app(
             llm_provider=x_llm_provider,
         )
 
+    @app.post("/api/v1/accounting/batches/async", status_code=status.HTTP_202_ACCEPTED)
+    async def create_batch_async(
+        files: list[UploadFile] = File(...),
+        x_workspace_id: str | None = Header(default="default-ws", alias="X-Workspace-ID"),
+        x_user_id: str | None = Header(default=None, alias="X-User-ID"),
+        idempotency_key: str | None = Header(default=None, alias="X-Idempotency-Key"),
+    ):
+        if not files:
+            raise HTTPException(status_code=400, detail="No files uploaded.")
+        if len(files) > MAX_BATCH_FILES:
+            raise HTTPException(
+                status_code=400,
+                detail=f"A batch can contain at most {MAX_BATCH_FILES} files.",
+            )
+
+        workspace_id = x_workspace_id or "default-ws"
+        batch_id = f"batch-{uuid.uuid4().hex[:12]}"
+        now = datetime.now().isoformat()
+
+        items = []
+        enqueued_jobs = []
+        active_storage_dir.mkdir(parents=True, exist_ok=True)
+
+        for upload in files:
+            name = upload.filename or "invoice.pdf"
+            sanitized_name = sanitize_upload_name(name)
+            file_id = f"file-{uuid.uuid4().hex[:12]}"
+            target_path = active_storage_dir / f"{file_id}_{sanitized_name}"
+            content = await upload.read()
+            target_path.write_bytes(content)
+
+            media_type = upload.content_type or "application/pdf"
+            items.append({
+                "file_id": file_id,
+                "file_name": sanitized_name,
+                "media_type": media_type,
+                "size_bytes": len(content),
+                "storage_uri": str(target_path),
+                "status": "queued",
+                "invoice_type": "dau_vao",
+                "note": "",
+                "extraction": {},
+                "warnings": [],
+                "errors": [],
+                "validation_status": "pending",
+                "validation_errors": [],
+            })
+
+        # Save batch shell in SQLite first so foreign key constraints on jobs table succeed
+        repository.save_batch(batch_id=batch_id, items=items, workspace_id=workspace_id)
+
+        for item in items:
+            job = repository.enqueue_job(
+                batch_id=batch_id,
+                file_id=item["file_id"],
+                workspace_id=workspace_id,
+                user_id=x_user_id,
+                idempotency_key=f"{idempotency_key}_{item['file_id']}" if idempotency_key else None,
+            )
+            enqueued_jobs.append(job)
+
+        return {
+            "batch_id": batch_id,
+            "workspace_id": workspace_id,
+            "status": "queued",
+            "total_files": len(items),
+            "jobs": enqueued_jobs,
+        }
+
+    @app.get("/api/v1/accounting/jobs/{job_id}")
+    async def get_job_status(job_id: str):
+        job = repository.get_job(job_id)
+        if not job:
+            raise HTTPException(status_code=404, detail="Job not found.")
+        return job
+
+    @app.get("/api/v1/accounting/batches/{batch_id}/jobs")
+    async def get_batch_jobs(batch_id: str):
+        jobs = repository.list_jobs(batch_id=batch_id)
+        if not jobs:
+            batch = repository.get_batch(batch_id)
+            if not batch:
+                raise HTTPException(status_code=404, detail="Batch not found.")
+        return {
+            "batch_id": batch_id,
+            "total_jobs": len(jobs),
+            "queued_count": sum(1 for j in jobs if j["status"] == "queued"),
+            "running_count": sum(1 for j in jobs if j["status"] == "running"),
+            "completed_count": sum(1 for j in jobs if j["status"] == "completed"),
+            "failed_count": sum(1 for j in jobs if j["status"] == "failed"),
+            "jobs": jobs,
+        }
+
     @app.get("/api/v1/accounting/batches/{batch_id}")
     async def get_batch(batch_id: str):
         batch = repository.get_batch(batch_id)
@@ -288,12 +384,20 @@ def create_app(
         batch_id: str,
         file_id: str,
         update: InvoiceItemUpdateSchema,
+        x_user_id: str | None = Header(default=None, alias="X-User-ID"),
     ):
-        updated = repository.update_item(
-            batch_id,
-            file_id,
-            update.model_dump(exclude_unset=True),
-        )
+        try:
+            updated = repository.update_item(
+                batch_id,
+                file_id,
+                update.model_dump(exclude_unset=True),
+                user_id=x_user_id,
+            )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=str(exc),
+            )
         if not updated:
             raise HTTPException(status_code=404, detail="Invoice item or batch not found.")
         return updated

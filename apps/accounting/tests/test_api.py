@@ -90,7 +90,7 @@ class TestAccountingBatchAPI(unittest.TestCase):
 
         approve_res = self.client.patch(
             f"/api/v1/accounting/batches/{batch_id}/items/{file_id}",
-            json={"status": "approved"},
+            json={"status": "approved", "override_reason": "Approved for export test"},
         )
         self.assertEqual(approve_res.status_code, 200)
 
@@ -107,13 +107,19 @@ class TestAccountingBatchAPI(unittest.TestCase):
         res1 = self.client.post("/api/v1/accounting/batches", files=[("files", ("inv1.pdf", b"pdf 1", "application/pdf"))])
         b1_id = res1.json()["batch_id"]
         f1_id = res1.json()["items"][0]["file_id"]
-        self.client.patch(f"/api/v1/accounting/batches/{b1_id}/items/{f1_id}", json={"status": "approved", "supplier_name": "Supplier 1"})
+        self.client.patch(
+            f"/api/v1/accounting/batches/{b1_id}/items/{f1_id}",
+            json={"status": "approved", "supplier_name": "Supplier 1", "override_reason": "Approved batch 1"},
+        )
 
         # Create Batch 2
         res2 = self.client.post("/api/v1/accounting/batches", files=[("files", ("inv2.pdf", b"pdf 2", "application/pdf"))])
         b2_id = res2.json()["batch_id"]
         f2_id = res2.json()["items"][0]["file_id"]
-        self.client.patch(f"/api/v1/accounting/batches/{b2_id}/items/{f2_id}", json={"status": "approved", "supplier_name": "Supplier 2"})
+        self.client.patch(
+            f"/api/v1/accounting/batches/{b2_id}/items/{f2_id}",
+            json={"status": "approved", "supplier_name": "Supplier 2", "override_reason": "Approved batch 2"},
+        )
 
         # Export ALL
         res_all = self.client.get("/api/v1/accounting/export-all.xlsx")
@@ -195,6 +201,46 @@ class TestAccountingBatchAPI(unittest.TestCase):
         self.assertEqual(latest_log["entity_id"], file_id)
         self.assertEqual(latest_log["reason"], "Khach hang xac nhan dung so hoa don")
         self.assertIn("extraction.supplier_name", latest_log["changes"])
+
+    def test_patch_approved_blocked_when_validation_errors_without_override_reason(self):
+        res = self.client.post("/api/v1/accounting/batches", files=[("files", ("test.pdf", b"pdf", "application/pdf"))])
+        batch_id = res.json()["batch_id"]
+        file_id = res.json()["items"][0]["file_id"]
+
+        # Introduce an arithmetic mismatch error: subtotal=100, tax=10, total=999
+        patch_res = self.client.patch(
+            f"/api/v1/accounting/batches/{batch_id}/items/{file_id}",
+            json={
+                "subtotal": 100.0,
+                "tax_amount": 10.0,
+                "total_amount": 999.0,
+                "status": "approved",
+                # No override_reason provided!
+            },
+        )
+        self.assertEqual(patch_res.status_code, 422)
+        self.assertIn("Bắt buộc phải cung cấp lý do giải trình", patch_res.json()["detail"])
+
+    def test_patch_approved_allowed_when_validation_errors_with_override_reason(self):
+        res = self.client.post("/api/v1/accounting/batches", files=[("files", ("test.pdf", b"pdf", "application/pdf"))])
+        batch_id = res.json()["batch_id"]
+        file_id = res.json()["items"][0]["file_id"]
+
+        # Patch with error + override_reason
+        patch_res = self.client.patch(
+            f"/api/v1/accounting/batches/{batch_id}/items/{file_id}",
+            json={
+                "subtotal": 100.0,
+                "tax_amount": 10.0,
+                "total_amount": 999.0,
+                "status": "approved",
+                "override_reason": "Duyệt ngoại lệ theo yêu cầu Kế toán trưởng",
+            },
+            headers={"X-User-ID": "user-acc-01"},
+        )
+        self.assertEqual(patch_res.status_code, 200)
+        self.assertEqual(patch_res.json()["status"], "approved")
+        self.assertEqual(patch_res.json()["validation_status"], "error")
 
 
 if __name__ == "__main__":

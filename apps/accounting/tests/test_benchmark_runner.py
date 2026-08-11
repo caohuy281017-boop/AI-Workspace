@@ -55,5 +55,5 @@ def test_run_benchmark_produces_valid_metrics_and_report():
     report_path = (ROOT_DIR / "benchmark" / "results_report.md").resolve()
     assert report_path.is_file(), "results_report.md must be generated"
     report_content = report_path.read_text(encoding="utf-8")
-    assert "# 📊 Báo Cáo Đánh Giá Benchmark" in report_content
+    assert "# 📊 Báo Cáo Đánh Giá" in report_content
     assert "Độ chính xác tổng thể" in report_content

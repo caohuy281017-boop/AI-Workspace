@@ -12,7 +12,7 @@ import uuid
 from contextlib import closing
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from accounting_app.validator import validate_invoice
 
@@ -595,6 +595,44 @@ class SQLiteInvoiceRepository:
                 "validation_errors": json.loads(row["validation_errors_json"] or "[]") if "validation_errors_json" in row.keys() else [],
             }
 
+    def update_item_extraction_and_status(
+        self,
+        file_id: str,
+        extraction: Dict[str, Any],
+        warnings: List[str],
+        errors: List[Dict[str, Any]],
+        validation_status: str,
+        validation_errors: List[Dict[str, Any]],
+        status: str = "needs_review",
+    ) -> bool:
+        now_str = datetime.now().isoformat()
+        with closing(self._get_connection()) as conn:
+            cur = conn.execute(
+                """
+                UPDATE invoice_items
+                SET extraction_json = ?,
+                    warnings_json = ?,
+                    errors_json = ?,
+                    validation_status = ?,
+                    validation_errors_json = ?,
+                    status = ?,
+                    updated_at = ?
+                WHERE file_id = ?
+                """,
+                (
+                    json.dumps(extraction),
+                    json.dumps(warnings),
+                    json.dumps(errors),
+                    validation_status,
+                    json.dumps(validation_errors),
+                    status,
+                    now_str,
+                    file_id,
+                ),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+
     def update_item(
         self,
         batch_id: str,
@@ -655,6 +693,16 @@ class SQLiteInvoiceRepository:
             val_warnings = [i.to_dict() for i in val_issues if i.severity in ("warning", "info")]
             validation_status = "error" if val_errors else ("warning" if val_warnings else "ok")
             all_val_issues = val_errors + val_warnings
+
+            # ── Backend Enforcement (P0) ──────────────────────────────────
+            # Reject approval if validation errors exist and override_reason is missing
+            if new_status == "approved" and val_errors:
+                if not override_reason or not str(override_reason).strip():
+                    error_msgs = "; ".join(e.get("message", "") for e in val_errors)
+                    raise ValueError(
+                        f"Không thể phê duyệt hóa đơn có {len(val_errors)} lỗi kiểm tra số liệu: [{error_msgs}]. "
+                        f"Bắt buộc phải cung cấp lý do giải trình (override_reason) hợp lệ."
+                    )
 
             now = datetime.now().isoformat()
 
@@ -748,4 +796,256 @@ class SQLiteInvoiceRepository:
                 }
                 for r in rows
             ]
+
+    # ── Background Job Management (P0) ───────────────────────────
+
+    def enqueue_job(
+        self,
+        batch_id: str,
+        file_id: str,
+        workspace_id: str = "default-ws",
+        user_id: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+        max_attempts: int = 3,
+    ) -> Dict[str, Any]:
+        job_id = f"job-{uuid.uuid4().hex[:12]}"
+        now = datetime.now().isoformat()
+        with closing(self._get_connection()) as conn:
+            # Check idempotency
+            if idempotency_key:
+                existing = conn.execute(
+                    "SELECT * FROM jobs WHERE idempotency_key = ?",
+                    (idempotency_key,),
+                ).fetchone()
+                if existing:
+                    return self._row_to_job_dict(existing)
+
+            conn.execute(
+                """
+                INSERT INTO jobs (
+                    job_id, batch_id, file_id, workspace_id, created_by_user_id,
+                    status, attempt_count, max_attempts, next_attempt_at,
+                    idempotency_key, created_at
+                ) VALUES (?, ?, ?, ?, ?, 'queued', 0, ?, ?, ?, ?)
+                """,
+                (
+                    job_id,
+                    batch_id,
+                    file_id,
+                    workspace_id,
+                    user_id,
+                    max_attempts,
+                    now,
+                    idempotency_key,
+                    now,
+                ),
+            )
+            conn.commit()
+            return {
+                "job_id": job_id,
+                "batch_id": batch_id,
+                "file_id": file_id,
+                "workspace_id": workspace_id,
+                "status": "queued",
+                "attempt_count": 0,
+                "max_attempts": max_attempts,
+                "created_at": now,
+            }
+
+    def claim_next_job(
+        self,
+        worker_id: str,
+        lease_seconds: int = 60,
+    ) -> Optional[Dict[str, Any]]:
+        """Atomically claim the next eligible job using SQLite immediate transaction."""
+        now = datetime.now()
+        now_str = now.isoformat()
+        lease_expires = (now + timedelta(seconds=lease_seconds)).isoformat()
+
+        with closing(self._get_connection()) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            candidate = conn.execute(
+                """
+                SELECT job_id, attempt_count, max_attempts FROM jobs
+                WHERE status = 'queued'
+                   OR (status = 'running' AND lease_expires_at < ?)
+                   OR (status = 'retrying' AND next_attempt_at <= ?)
+                ORDER BY created_at ASC
+                LIMIT 1
+                """,
+                (now_str, now_str),
+            ).fetchone()
+
+            if not candidate:
+                conn.commit()
+                return None
+
+            job_id = candidate["job_id"]
+            new_attempt = candidate["attempt_count"] + 1
+
+            conn.execute(
+                """
+                UPDATE jobs
+                SET status = 'running',
+                    attempt_count = ?,
+                    worker_id = ?,
+                    lease_expires_at = ?,
+                    heartbeat_at = ?,
+                    started_at = COALESCE(started_at, ?)
+                WHERE job_id = ?
+                """,
+                (new_attempt, worker_id, lease_expires, now_str, now_str, job_id),
+            )
+            conn.commit()
+
+            updated = conn.execute(
+                "SELECT * FROM jobs WHERE job_id = ?", (job_id,)
+            ).fetchone()
+            return self._row_to_job_dict(updated) if updated else None
+
+    def heartbeat_job(self, job_id: str, worker_id: str, extend_seconds: int = 60) -> bool:
+        now = datetime.now()
+        now_str = now.isoformat()
+        lease_expires = (now + timedelta(seconds=extend_seconds)).isoformat()
+        with closing(self._get_connection()) as conn:
+            cur = conn.execute(
+                """
+                UPDATE jobs
+                SET heartbeat_at = ?, lease_expires_at = ?
+                WHERE job_id = ? AND worker_id = ? AND status = 'running'
+                """,
+                (now_str, lease_expires, job_id, worker_id),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+
+    def complete_job(self, job_id: str, routing_decision: Optional[Dict[str, Any]] = None) -> bool:
+        now_str = datetime.now().isoformat()
+        routing_json = json.dumps(routing_decision) if routing_decision else None
+        with closing(self._get_connection()) as conn:
+            cur = conn.execute(
+                """
+                UPDATE jobs
+                SET status = 'completed',
+                    completed_at = ?,
+                    routing_decision_json = COALESCE(?, routing_decision_json),
+                    last_error_code = NULL,
+                    last_error_message = NULL
+                WHERE job_id = ?
+                """,
+                (now_str, routing_json, job_id),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+
+    def fail_job(
+        self,
+        job_id: str,
+        error_code: str,
+        error_message: str,
+        backoff_seconds: int = 5,
+    ) -> str:
+        """Fail or schedule a retry for the job. Returns new status ('retrying' or 'failed')."""
+        now = datetime.now()
+        now_str = now.isoformat()
+        with closing(self._get_connection()) as conn:
+            job = conn.execute(
+                "SELECT attempt_count, max_attempts FROM jobs WHERE job_id = ?",
+                (job_id,),
+            ).fetchone()
+            if not job:
+                return "failed"
+
+            attempt = job["attempt_count"]
+            max_att = job["max_attempts"]
+
+            if attempt < max_att:
+                next_at = (now + timedelta(seconds=backoff_seconds * attempt)).isoformat()
+                new_status = "retrying"
+                conn.execute(
+                    """
+                    UPDATE jobs
+                    SET status = 'retrying',
+                        next_attempt_at = ?,
+                        last_error_code = ?,
+                        last_error_message = ?
+                    WHERE job_id = ?
+                    """,
+                    (next_at, error_code, error_message, job_id),
+                )
+            else:
+                new_status = "failed"
+                conn.execute(
+                    """
+                    UPDATE jobs
+                    SET status = 'failed',
+                        completed_at = ?,
+                        last_error_code = ?,
+                        last_error_message = ?
+                    WHERE job_id = ?
+                    """,
+                    (now_str, error_code, error_message, job_id),
+                )
+            conn.commit()
+            return new_status
+
+    def recover_stale_jobs(self) -> int:
+        now_str = datetime.now().isoformat()
+        with closing(self._get_connection()) as conn:
+            cur = conn.execute(
+                """
+                UPDATE jobs
+                SET status = 'queued', worker_id = NULL, lease_expires_at = NULL
+                WHERE status = 'running' AND lease_expires_at < ?
+                """,
+                (now_str,),
+            )
+            conn.commit()
+            return cur.rowcount
+
+    def get_job(self, job_id: str) -> Optional[Dict[str, Any]]:
+        with closing(self._get_connection()) as conn:
+            row = conn.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
+            return self._row_to_job_dict(row) if row else None
+
+    def list_jobs(
+        self,
+        batch_id: Optional[str] = None,
+        workspace_id: str = "default-ws",
+    ) -> List[Dict[str, Any]]:
+        with closing(self._get_connection()) as conn:
+            if batch_id:
+                rows = conn.execute(
+                    "SELECT * FROM jobs WHERE batch_id = ? ORDER BY created_at ASC",
+                    (batch_id,),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM jobs WHERE workspace_id = ? ORDER BY created_at DESC LIMIT 100",
+                    (workspace_id,),
+                ).fetchall()
+            return [self._row_to_job_dict(r) for r in rows]
+
+    def _row_to_job_dict(self, row: sqlite3.Row) -> Dict[str, Any]:
+        return {
+            "job_id": row["job_id"],
+            "batch_id": row["batch_id"],
+            "file_id": row["file_id"],
+            "workspace_id": row["workspace_id"],
+            "created_by_user_id": row["created_by_user_id"],
+            "status": row["status"],
+            "attempt_count": row["attempt_count"],
+            "max_attempts": row["max_attempts"],
+            "next_attempt_at": row["next_attempt_at"],
+            "worker_id": row["worker_id"],
+            "lease_expires_at": row["lease_expires_at"],
+            "heartbeat_at": row["heartbeat_at"],
+            "idempotency_key": row["idempotency_key"],
+            "last_error_code": row["last_error_code"],
+            "last_error_message": row["last_error_message"],
+            "routing_decision": json.loads(row["routing_decision_json"] or "null") if row["routing_decision_json"] else None,
+            "created_at": row["created_at"],
+            "started_at": row["started_at"],
+            "completed_at": row["completed_at"],
+        }
 

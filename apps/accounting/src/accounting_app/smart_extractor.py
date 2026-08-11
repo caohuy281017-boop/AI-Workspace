@@ -282,6 +282,23 @@ def extract_with_heuristics(text: str, filename: str) -> tuple[Dict[str, Any], L
         else:
             warnings.append("⚠️ Chưa trích xuất được Mã số thuế nhà cung cấp.")
 
+    # 2b. Buyer Tax ID (Schema v2)
+    buyer_tax_match = re.search(
+        r'(?:Mã\s*số\s*thuế\s*(?:người\s*mua|khách\s*hàng)|MST\s*(?:người\s*mua|khách\s*hàng|doanh\s*nghiệp)|Tax\s*(?:code|ID)\s*(?:buyer|customer))[:\s]*([0-9]{10}(?:-[0-9]{3})?)',
+        text,
+        re.IGNORECASE,
+    )
+    if buyer_tax_match:
+        result["buyer_tax_id"] = buyer_tax_match.group(1)
+    else:
+        # If text contains multiple distinct MSTs, assign second one to buyer
+        all_msts = re.findall(r'\b([0-9]{10}(?:-[0-9]{3})?)\b', text)
+        if len(all_msts) >= 2 and result.get("supplier_tax_id"):
+            for m in all_msts:
+                if m != result["supplier_tax_id"]:
+                    result["buyer_tax_id"] = m
+                    break
+
     # 3. Invoice Number
     if not result["invoice_number"]:
         inv_num_match = re.search(
@@ -611,26 +628,46 @@ class SmartInvoiceExtractor:
             f"- custom_fields.{code}: {spec.get('description', code)}"
             for code, spec in custom_properties.items()
         )
-        prompt = f"""
-        You are a professional accounting AI. Extract key fields from this invoice document into a strict JSON object.
-        Required fields:
-        - supplier_name (str)
-        - supplier_tax_id (str)
-        - invoice_number (str)
-        - invoice_date (YYYY-MM-DD or DD/MM/YYYY)
-        - currency ("VND" or "USD")
-        - subtotal (number)
-        - tax_amount (number)
-        - total_amount (number)
-        - items: list of objects with {{description, quantity, unit_price, amount}}
-        - custom_fields: object containing the requested custom fields below
+        prompt = f"""\
+You are an expert accounting AI specialized in Vietnamese and international invoice extraction.
+Extract all fields from this invoice into a strict JSON object matching Schema v2.0.
 
-        Custom fields:
-        {custom_instructions or '- none'}
+JSON Fields to extract:
+- supplier_name: (string or null) Full legal/commercial name of the seller/supplier.
+- supplier_tax_id: (string or null) Vietnamese MST (10 or 13 digits) or foreign Tax ID.
+- buyer_name: (string or null) Full legal name of the purchaser/buyer.
+- buyer_tax_id: (string or null) MST/Tax ID of the buyer.
+- invoice_template_number: (string or null) Mẫu số (e.g. "1/001", "2/001").
+- invoice_series: (string or null) Ký hiệu (e.g. "1C26TAP", "AA/25E").
+- invoice_number: (string or null) Số hóa đơn (e.g. "00008228", "357073").
+- invoice_date: (string or null) Issue date formatted as ISO 8601 (YYYY-MM-DD).
+- currency: (string or null) "VND", "USD", "EUR" etc. Use null if ambiguous.
+- subtotal: (number or null) Pre-tax total amount / Cộng tiền hàng.
+- discount_amount: (number or null) Chiết khấu / Giảm giá.
+- fees: (number or null) Phụ phí / Phí khác.
+- tax_amount: (number or null) Tiền thuế GTGT / VAT.
+- total_amount: (number or null) Tổng cộng tiền thanh toán.
+- tax_breakdown: (array of objects) Per-rate tax rows: [{{"tax_rate": number, "taxable_amount": number, "tax_amount": number}}].
+- items: (array of objects) Line items with:
+    {{
+      "description": string or null,
+      "unit": string or null,
+      "quantity": number or null,
+      "unit_price": number or null,
+      "discount_rate": number or null,
+      "tax_rate": number or null,
+      "amount": number or null,
+      "line_type": "normal" | "discount" | "adjustment" or null
+    }}
+- custom_fields: (object)
+{custom_instructions or "  (None)"}
 
-        Do NOT invent or fabricate fake dates or amounts. If a field is not present in the document, use empty string "" or 0.
-        Return ONLY valid JSON.
-        """
+CRITICAL RULES — NULL POLICY:
+1. For ANY field not clearly present or verified in the document, you MUST return null (or [] for empty lists).
+2. NEVER use empty strings "" or fabricated default numbers (do NOT use 0 for missing amounts).
+3. NEVER guess or invent line items or dates.
+4. Return ONLY a valid JSON object matching these fields.
+"""
 
         # ── Document Routing Decision (Lát 5) ────────────────────
         routing = assess_text_quality(

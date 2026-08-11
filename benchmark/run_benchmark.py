@@ -18,7 +18,9 @@ ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR / "apps" / "accounting" / "src"))
 sys.path.insert(0, str(ROOT_DIR / "packages" / "platform-core" / "src"))
 
-from accounting_app.smart_extractor import extract_with_heuristics
+from platform_core.domain import ContentBlock, FileReference, ParsedDocument
+from accounting_app.schema import INVOICE_SCHEMA_V2, SCHEMA_NAME, SCHEMA_VERSION
+from accounting_app.smart_extractor import SmartInvoiceExtractor, extract_with_heuristics
 from accounting_app.router import assess_text_quality
 
 
@@ -62,7 +64,12 @@ def _compare_exact(extracted: Any, expected: Any) -> bool:
     return str(extracted).strip().lower() == str(expected).strip().lower()
 
 
-def run_benchmark(ground_truth_path: Path | None = None) -> Dict[str, Any]:
+def run_benchmark(
+    ground_truth_path: Path | None = None,
+    mode: str = "heuristics",
+    api_key: str | None = None,
+    openai_api_key: str | None = None,
+) -> Dict[str, Any]:
     if ground_truth_path is None:
         ground_truth_path = Path(__file__).resolve().parent / "ground_truth.json"
 
@@ -75,6 +82,7 @@ def run_benchmark(ground_truth_path: Path | None = None) -> Dict[str, Any]:
     fields_to_eval = [
         "supplier_name",
         "supplier_tax_id",
+        "buyer_tax_id",
         "invoice_number",
         "invoice_date",
         "currency",
@@ -88,6 +96,12 @@ def run_benchmark(ground_truth_path: Path | None = None) -> Dict[str, Any]:
     routing_scores: List[float] = []
     document_results: List[Dict[str, Any]] = []
 
+    extractor = SmartInvoiceExtractor(
+        api_key=api_key,
+        openai_api_key=openai_api_key,
+        provider=mode if mode in ("gemini", "openai") else None,
+    )
+
     start_time = time.perf_counter()
 
     for inv in invoices:
@@ -100,14 +114,38 @@ def run_benchmark(ground_truth_path: Path | None = None) -> Dict[str, Any]:
         routing = assess_text_quality(text, media_type=inv.get("media_type", "application/pdf"), filename=filename)
         routing_scores.append(routing.text_quality_score)
 
-        # Run extraction
-        extracted, warnings = extract_with_heuristics(text, filename)
+        # Run extraction based on mode
+        if mode == "heuristics":
+            extracted, warnings = extract_with_heuristics(text, filename)
+            provider_label = "HeuristicInvoiceParser"
+        else:
+            parsed_doc = ParsedDocument(
+                source=FileReference(
+                    file_id=inv_id,
+                    workspace_id="benchmark",
+                    name=filename,
+                    media_type="application/pdf",
+                    size_bytes=len(text.encode("utf-8")),
+                    storage_uri="",
+                ),
+                blocks=[ContentBlock(block_id="b0", kind="text", text=text)],
+                parser="benchmark-text",
+            )
+            res = extractor.extract(
+                parsed_doc,
+                schema_name=SCHEMA_NAME,
+                schema_version=SCHEMA_VERSION,
+                schema=INVOICE_SCHEMA_V2,
+            )
+            extracted = res.values
+            provider_label = res.provider
 
         doc_eval: Dict[str, Any] = {
             "id": inv_id,
             "filename": filename,
             "routing_mode": routing.mode,
             "text_quality_score": routing.text_quality_score,
+            "provider": provider_label,
             "fields": {},
         }
 
@@ -173,30 +211,36 @@ def run_benchmark(ground_truth_path: Path | None = None) -> Dict[str, Any]:
     return summary
 
 
-def _generate_markdown_report(summary: Dict[str, Any]) -> str:
+def _generate_markdown_report(summary: Dict[str, Any], mode: str = "heuristics") -> str:
     lines = [
-        "# 📊 Báo Cáo Đánh Giá Benchmark Độ Chính Xác (Ground Truth)",
+        "# 📊 Báo Cáo Đánh Giá: Synthetic Heuristic Baseline Benchmark",
         "",
-        f"- **Tổng số hóa đơn kiểm thử:** {summary['total_documents']}",
+        "> [!NOTE]",
+        "> **Phương pháp đánh giá:** Bộ benchmark này đo lường độ chính xác trích xuất cơ sở (Baseline Heuristics) "
+        "và thuật toán định tuyến chất lượng văn bản (`router.py`) trên tập 20 tài liệu văn bản kế toán mẫu ẩn danh. "
+        "Khi cấu hình API Key cho Gemini Multimodal hoặc OpenAI Vision, runner hỗ trợ đo lường trực tiếp độ chính xác của mô hình AI.",
+        "",
+        f"- **Chế độ kiểm thử (Mode):** `{mode}`",
+        f"- **Tổng số tài liệu kiểm thử:** {summary['total_documents']}",
         f"- **Thời gian xử lý trung bình:** {summary['avg_ms_per_doc']} ms / chứng từ",
         f"- **Độ chính xác tổng thể (Field-level Accuracy):** **{summary['overall_accuracy_pct']}%**",
-        f"- **Điểm chất lượng văn bản trung bình:** {summary['avg_text_quality_score']}",
+        f"- **Điểm chất lượng văn bản trung bình (Text Quality Score):** {summary['avg_text_quality_score']}",
         "",
-        "## 1. Độ chính xác theo từng trường thông tin",
+        "## 1. Độ chính xác theo từng trường thông tin (Schema v2.0)",
         "",
-        "| Trường thông tin | Tổng mẫu | Số mẫu đúng | Tỷ lệ chính xác (%) | Đánh giá |",
-        "| :--- | :---: | :---: | :---: | :---: |",
+        "| Trường thông tin | Tổng mẫu | Tỷ lệ chính xác (%) | Đánh giá |",
+        "| :--- | :---: | :---: | :---: |",
     ]
 
     for field, acc in summary["field_accuracies"].items():
         eval_tag = "✅ Xuất sắc" if acc >= 90 else ("⚠️ Khá" if acc >= 75 else "🛑 Cần cải thiện")
-        lines.append(f"| `{field}` | {summary['total_documents']} | — | **{acc}%** | {eval_tag} |")
+        lines.append(f"| `{field}` | {summary['total_documents']} | **{acc}%** | {eval_tag} |")
 
     lines.extend([
         "",
         "## 2. Chi tiết từng chứng từ kiểm thử",
         "",
-        "| ID | Tệp hóa đơn | Routing Mode | Điểm Text | Kết quả trường số liệu |",
+        "| ID | Tệp chứng từ | Routing Mode | Điểm Text | Kết quả trường số liệu |",
         "| :--- | :--- | :---: | :---: | :--- |",
     ])
 
