@@ -18,7 +18,9 @@ The product should make document automation approachable to business users while
 
 ## Initial applications
 
-### 1. Accounting Batch
+### 1. Invoice Intelligence (Kho Chứng Từ AI)
+
+**Định vị:** Đọc, tra cứu và chuẩn bị dữ liệu hóa đơn để xuất sang phần mềm kế toán hiện có. Không thay thế phần mềm kế toán.
 
 Input: multiple invoice PDFs or images.
 
@@ -26,20 +28,20 @@ Planned flow:
 
 1. Upload a folder or select multiple files.
 2. Detect file type and classify invoice-like documents.
-3. Parse embedded text or use OCR when needed.
-4. Extract invoice fields and line items into a stable schema.
-5. Show a review table with validation warnings and source evidence.
-6. Let users edit, approve, and export an XLSX workbook.
+3. Parse embedded text or use OCR / Vision AI when needed.
+4. Extract invoice fields (Buyer, Supplier, Tax IDs, Amounts, etc.) into a stable schema (Schema v2).
+5. Show a fast search/filter interface and a review table with validation warnings and source evidence.
+6. Let users edit, verify, and export an XLSX workbook ready for MISA, FAST, or ERPs.
 
 Initial fields should include supplier, invoice number, invoice date, currency, subtotal, tax, total, and line items. The schema will be versioned before implementation.
 
-### 2. Document Translator
+### 2. Document Translator (Sắp ra mắt)
 
 Input: PDF, DOCX, or PPTX.
 
 Output: a translated document, preserving structure and layout as far as the selected format and engine permit. The workflow should retain headings, paragraphs, tables, slides, images, and reading order where possible, and clearly flag layout degradation.
 
-### 3. Meeting
+### 3. Meeting Notes (Sắp ra mắt)
 
 Input: MP3 or MP4.
 
