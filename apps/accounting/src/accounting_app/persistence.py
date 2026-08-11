@@ -20,76 +20,179 @@ class SQLiteInvoiceRepository:
     def __init__(self, db_path: str = "data/accounting_workspace.db") -> None:
         self.db_path = Path(db_path)
         self.db_path.parent.mkdir(parents=True, exist_ok=True)
-        self._init_db()
+        self._run_migrations()
 
     def _get_connection(self) -> sqlite3.Connection:
         conn = sqlite3.connect(str(self.db_path))
         conn.row_factory = sqlite3.Row
+        # WAL mode for better concurrent read/write performance
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA foreign_keys=ON")
         return conn
 
-    def _init_db(self) -> None:
+
+    # ──────────────────────────────────────────────────────────────────────────
+    # Migration Framework
+    # ──────────────────────────────────────────────────────────────────────────
+
+    def _run_migrations(self) -> None:
+        """Apply all pending migrations in order. Idempotent — safe to run on every startup."""
         with closing(self._get_connection()) as conn:
             conn.execute("""
-                CREATE TABLE IF NOT EXISTS batches (
-                    batch_id TEXT PRIMARY KEY,
-                    created_at TEXT NOT NULL
+                CREATE TABLE IF NOT EXISTS db_migrations (
+                    version TEXT PRIMARY KEY,
+                    applied_at TEXT NOT NULL,
+                    description TEXT NOT NULL
                 );
             """)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS invoice_items (
-                    file_id TEXT PRIMARY KEY,
-                    batch_id TEXT NOT NULL,
-                    file_name TEXT NOT NULL,
-                    media_type TEXT,
-                    size_bytes INTEGER,
-                    storage_uri TEXT,
-                    status TEXT NOT NULL,
-                    extraction_json TEXT NOT NULL,
-                    warnings_json TEXT,
-                    errors_json TEXT,
-                    updated_at TEXT NOT NULL,
-                    FOREIGN KEY (batch_id) REFERENCES batches(batch_id) ON DELETE CASCADE
-                );
-            """)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS custom_fields (
-                    code TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    field_type TEXT NOT NULL,
-                    llm_prompt TEXT NOT NULL DEFAULT '',
-                    visible_in_list INTEGER NOT NULL DEFAULT 0,
-                    visible_in_analysis INTEGER NOT NULL DEFAULT 1,
-                    is_required INTEGER NOT NULL DEFAULT 0,
-                    display_order INTEGER NOT NULL,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                );
-            """)
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS custom_fields (
-                    code TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    field_type TEXT NOT NULL,
-                    llm_prompt TEXT NOT NULL DEFAULT '',
-                    visible_in_list INTEGER NOT NULL DEFAULT 0,
-                    visible_in_analysis INTEGER NOT NULL DEFAULT 1,
-                    is_required INTEGER NOT NULL DEFAULT 0,
-                    display_order INTEGER NOT NULL,
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                );
-            """)
-            columns = {
-                row["name"]
-                for row in conn.execute("PRAGMA table_info(invoice_items)").fetchall()
-            }
-            if "storage_uri" not in columns:
-                conn.execute("ALTER TABLE invoice_items ADD COLUMN storage_uri TEXT")
-            if "invoice_type" not in columns:
-                conn.execute("ALTER TABLE invoice_items ADD COLUMN invoice_type TEXT DEFAULT 'dau_vao'")
-            if "note" not in columns:
-                conn.execute("ALTER TABLE invoice_items ADD COLUMN note TEXT DEFAULT ''")
             conn.commit()
+            applied = {
+                row["version"]
+                for row in conn.execute("SELECT version FROM db_migrations").fetchall()
+            }
+
+        for version, description, sql_statements in self._get_migrations():
+            if version in applied:
+                continue
+            with closing(self._get_connection()) as conn:
+                for stmt in sql_statements:
+                    conn.execute(stmt)
+                conn.execute(
+                    "INSERT INTO db_migrations (version, applied_at, description) VALUES (?, ?, ?)",
+                    (version, datetime.utcnow().isoformat(), description),
+                )
+                conn.commit()
+
+    @staticmethod
+    def _get_migrations() -> list[tuple[str, str, list[str]]]:
+        """Return ordered list of (version, description, [sql_statements]).
+
+        Rules:
+        - Versions must be zero-padded sortable strings ('001', '002', ...).
+        - Each migration is idempotent: uses CREATE TABLE IF NOT EXISTS, etc.
+        - Never DROP existing data without an explicit plan.
+        """
+        return [
+            (
+                "001",
+                "Initial schema: batches, invoice_items, custom_fields",
+                [
+                    """
+                    CREATE TABLE IF NOT EXISTS batches (
+                        batch_id     TEXT PRIMARY KEY,
+                        workspace_id TEXT NOT NULL DEFAULT 'default-ws',
+                        created_at   TEXT NOT NULL
+                    );
+                    """,
+                    """
+                    CREATE TABLE IF NOT EXISTS invoice_items (
+                        file_id                TEXT PRIMARY KEY,
+                        batch_id               TEXT NOT NULL,
+                        workspace_id           TEXT NOT NULL DEFAULT 'default-ws',
+                        created_by_user_id     TEXT,
+                        file_name              TEXT NOT NULL,
+                        media_type             TEXT,
+                        size_bytes             INTEGER,
+                        storage_uri            TEXT,
+                        invoice_type           TEXT DEFAULT 'dau_vao',
+                        note                   TEXT DEFAULT '',
+                        status                 TEXT NOT NULL,
+                        extraction_json        TEXT NOT NULL,
+                        warnings_json          TEXT,
+                        errors_json            TEXT,
+                        validation_status      TEXT DEFAULT 'pending',
+                        validation_errors_json TEXT,
+                        updated_at             TEXT NOT NULL,
+                        FOREIGN KEY (batch_id) REFERENCES batches(batch_id) ON DELETE CASCADE
+                    );
+                    """,
+                    """
+                    CREATE TABLE IF NOT EXISTS custom_fields (
+                        code                TEXT PRIMARY KEY,
+                        name                TEXT NOT NULL,
+                        field_type          TEXT NOT NULL,
+                        llm_prompt          TEXT NOT NULL DEFAULT '',
+                        visible_in_list     INTEGER NOT NULL DEFAULT 0,
+                        visible_in_analysis INTEGER NOT NULL DEFAULT 1,
+                        is_required         INTEGER NOT NULL DEFAULT 0,
+                        display_order       INTEGER NOT NULL,
+                        created_at          TEXT NOT NULL,
+                        updated_at          TEXT NOT NULL
+                    );
+                    """,
+                ],
+            ),
+            (
+                "002",
+                "Add jobs table for async background processing with lease/idempotency",
+                [
+                    """
+                    CREATE TABLE IF NOT EXISTS jobs (
+                        job_id                TEXT PRIMARY KEY,
+                        batch_id              TEXT NOT NULL,
+                        file_id               TEXT NOT NULL,
+                        workspace_id          TEXT NOT NULL DEFAULT 'default-ws',
+                        created_by_user_id    TEXT,
+                        status                TEXT NOT NULL DEFAULT 'queued',
+                        attempt_count         INTEGER NOT NULL DEFAULT 0,
+                        max_attempts          INTEGER NOT NULL DEFAULT 3,
+                        next_attempt_at       TEXT,
+                        worker_id             TEXT,
+                        lease_expires_at      TEXT,
+                        heartbeat_at          TEXT,
+                        idempotency_key       TEXT UNIQUE,
+                        last_error_code       TEXT,
+                        last_error_message    TEXT,
+                        routing_decision_json TEXT,
+                        created_at            TEXT NOT NULL,
+                        started_at            TEXT,
+                        completed_at          TEXT,
+                        FOREIGN KEY (batch_id) REFERENCES batches(batch_id) ON DELETE CASCADE
+                    );
+                    """,
+                    "CREATE INDEX IF NOT EXISTS idx_jobs_status_next ON jobs(status, next_attempt_at);",
+                    "CREATE INDEX IF NOT EXISTS idx_jobs_workspace ON jobs(workspace_id);",
+                    "CREATE INDEX IF NOT EXISTS idx_jobs_file ON jobs(file_id);",
+                ],
+            ),
+            (
+                "003",
+                "Backfill workspace/user indexes on invoice_items and batches",
+                [
+                    "CREATE INDEX IF NOT EXISTS idx_invoice_items_workspace ON invoice_items(workspace_id);",
+                    "CREATE INDEX IF NOT EXISTS idx_batches_workspace ON batches(workspace_id);",
+                ],
+            ),
+        ]
+
+    def _ensure_legacy_columns(self, conn: sqlite3.Connection) -> None:
+        """Backfill columns missing on databases created before migration 001.
+
+        Safe to call multiple times — uses PRAGMA table_info to check existence.
+        Only needed for pre-migration databases; new installs use the full schema.
+        """
+        legacy_additions: dict[str, dict[str, str]] = {
+            "invoice_items": {
+                "workspace_id": "TEXT NOT NULL DEFAULT 'default-ws'",
+                "created_by_user_id": "TEXT",
+                "storage_uri": "TEXT",
+                "invoice_type": "TEXT DEFAULT 'dau_vao'",
+                "note": "TEXT DEFAULT ''",
+                "validation_status": "TEXT DEFAULT 'pending'",
+                "validation_errors_json": "TEXT",
+            },
+            "batches": {
+                "workspace_id": "TEXT NOT NULL DEFAULT 'default-ws'",
+            },
+        }
+        for table, columns in legacy_additions.items():
+            existing = {
+                row["name"]
+                for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+            }
+            for col_name, col_def in columns.items():
+                if col_name not in existing:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {col_name} {col_def}")
 
     def list_custom_fields(self) -> List[Dict[str, Any]]:
         with closing(self._get_connection()) as conn:

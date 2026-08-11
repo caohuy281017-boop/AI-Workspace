@@ -2,8 +2,15 @@
 
 Supports:
 1. Gemini Generative AI (multimodal vision + text) when GEMINI_API_KEY is available.
-2. Rule-based / Regex heuristic text parser as robust zero-dependency fallback.
-3. No fake dates or fabricated numbers: missing fields return empty/zero with explicit warnings.
+2. OpenAI GPT-4o / GPT-4o-mini (vision for images, text for PDF).
+3. Rule-based / Regex heuristic text parser as zero-dependency fallback.
+
+NULL POLICY (enforced throughout this module):
+- All numeric fields return None when not found — never 0 or 0.0.
+- All string fields return None when not found — never empty string or default value.
+- currency returns None when ambiguous — never defaulted to "VND".
+- Line items that cannot be read are omitted — never invented.
+- Missing fields are surfaced as warnings for human review.
 """
 
 from __future__ import annotations
@@ -13,71 +20,141 @@ import logging
 import math
 import os
 import re
-from typing import Any, Dict, List, Mapping, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from platform_core.domain import ExtractionResult, ParsedDocument
-from accounting_app.schema import INVOICE_SCHEMA_V1, SCHEMA_VERSION
+from accounting_app.schema import INVOICE_SCHEMA_V2 as INVOICE_SCHEMA_V1, SCHEMA_VERSION
 
 logger = logging.getLogger(__name__)
 
 
+def _clean_optional_str(val: Any) -> Optional[str]:
+    """Return the value as a stripped string, or None.
+
+    Accepts only actual str (or number types that safely coerce to a meaningful string).
+    Rejects list, dict, bool, and other unexpected AI output types — returns None.
+    Never returns an empty string; converts empty → None.
+    """
+    if val is None:
+        return None
+    # Reject non-scalar types that indicate AI returned wrong structure
+    if isinstance(val, (list, dict, bool)):
+        return None
+    s = str(val).strip()
+    return s if s else None
+
+
+def _clean_optional_float(val: Any, field_name: str, warnings: List[str]) -> Optional[float]:
+    """Return float value or None — never 0.0 as a stand-in for 'not found'.
+
+    Returns None when val is None (field not found in document).
+    Returns None and appends a warning when val is present but cannot be parsed
+    or is negative/infinite — distinguishing 'not found' from 'invalid'.
+    """
+    if val is None:
+        return None
+    try:
+        f = float(val)
+        if math.isnan(f) or math.isinf(f):
+            warnings.append(f"⚠️ {field_name}: giá trị không hợp lệ ({val!r}) — bỏ qua.")
+            return None
+        if f < 0:
+            warnings.append(f"⚠️ {field_name}: giá trị âm ({f}) — cần kiểm tra.")
+        return f
+    except (ValueError, TypeError):
+        warnings.append(f"⚠️ {field_name}: không thể đọc giá trị ({val!r}) — bỏ qua.")
+        return None
+
+
 def _normalize_extraction_values(raw_values: Dict[str, Any]) -> Tuple[Dict[str, Any], List[str]]:
-    """Sanitize and normalize extraction dict schema, returning (values, warnings)."""
+    """Sanitize and normalize AI extraction output, returning (values, warnings).
+
+    NULL POLICY: Fields that are absent or unreadable are kept as None.
+    We never substitute fabricated defaults (0, 'VND', 'Hàng hóa / Dịch vụ', etc.).
+    All None fields surface as warnings so human reviewers can correct them.
+    """
     warnings: List[str] = []
-    
-    supplier_name = raw_values.get("supplier_name")
-    if not isinstance(supplier_name, str):
-        supplier_name = ""
-        warnings.append("⚠️ Tên nhà cung cấp không hợp lệ.")
 
-    supplier_tax_id = str(raw_values.get("supplier_tax_id") or "")
-    invoice_number = str(raw_values.get("invoice_number") or "")
-    invoice_date = str(raw_values.get("invoice_date") or "")
-    currency = str(raw_values.get("currency") or "VND")
+    # ── String fields — None when not found ──────────────────────────────
+    supplier_name = _clean_optional_str(raw_values.get("supplier_name"))
+    supplier_tax_id = _clean_optional_str(raw_values.get("supplier_tax_id"))
+    buyer_name = _clean_optional_str(raw_values.get("buyer_name"))
+    buyer_tax_id = _clean_optional_str(raw_values.get("buyer_tax_id"))
+    invoice_template_number = _clean_optional_str(raw_values.get("invoice_template_number"))
+    invoice_series = _clean_optional_str(raw_values.get("invoice_series"))
+    invoice_number = _clean_optional_str(raw_values.get("invoice_number"))
+    invoice_date = _clean_optional_str(raw_values.get("invoice_date"))
+    # currency: None when ambiguous — do NOT default to "VND"
+    currency = _clean_optional_str(raw_values.get("currency"))
 
-    def clean_float(val: Any, field_name: str) -> float:
-        if val is None:
-            return 0.0
-        try:
-            f = float(val)
-            if math.isnan(f) or math.isinf(f) or f < 0:
-                warnings.append(f"⚠️ {field_name} không hợp lệ.")
-                return 0.0
-            return f
-        except (ValueError, TypeError):
-            warnings.append(f"⚠️ {field_name} không hợp lệ.")
-            return 0.0
+    # ── Numeric fields — None when not found ─────────────────────────────
+    subtotal = _clean_optional_float(raw_values.get("subtotal"), "Tiền trước thuế", warnings)
+    discount_amount = _clean_optional_float(raw_values.get("discount_amount"), "Chiết khấu", warnings)
+    fees = _clean_optional_float(raw_values.get("fees"), "Phí khác", warnings)
+    tax_amount = _clean_optional_float(raw_values.get("tax_amount"), "Tiền thuế", warnings)
+    total_amount = _clean_optional_float(raw_values.get("total_amount"), "Tổng tiền", warnings)
 
-    subtotal = clean_float(raw_values.get("subtotal"), "Tiền trước thuế")
-    tax_amount = clean_float(raw_values.get("tax_amount"), "Tiền thuế")
-    total_amount = clean_float(raw_values.get("total_amount"), "Tổng tiền")
+    if total_amount is None:
+        warnings.append("⚠️ Không tìm thấy tổng tiền thanh toán — cần kiểm duyệt thủ công.")
 
+    # ── Tax breakdown ─────────────────────────────────────────────────────
+    raw_breakdown = raw_values.get("tax_breakdown")
+    tax_breakdown: List[Dict[str, Any]] = []
+    if isinstance(raw_breakdown, list):
+        for row in raw_breakdown:
+            if isinstance(row, dict):
+                tax_breakdown.append({
+                    "tax_rate": _clean_optional_float(row.get("tax_rate"), "Thuế suất", warnings),
+                    "taxable_amount": _clean_optional_float(row.get("taxable_amount"), "Tiền chịu thuế", warnings),
+                    "tax_amount": _clean_optional_float(row.get("tax_amount"), "Tiền thuế dòng", warnings),
+                })
+
+    # ── Line items — keep None, never invent ─────────────────────────────
     raw_items = raw_values.get("items")
-    items = raw_items if isinstance(raw_items, list) else []
+    clean_items: List[Dict[str, Any]] = []
+    if isinstance(raw_items, list):
+        for idx, it in enumerate(raw_items):
+            if not isinstance(it, dict):
+                continue
+            item: Dict[str, Any] = {
+                "description": _clean_optional_str(
+                    it.get("description") or it.get("desc")
+                ),
+                "unit": _clean_optional_str(it.get("unit")),
+                "quantity": _clean_optional_float(it.get("quantity") or it.get("qty"), f"Số lượng dòng {idx+1}", warnings),
+                "unit_price": _clean_optional_float(it.get("unit_price") or it.get("price"), f"Đơn giá dòng {idx+1}", warnings),
+                "discount_rate": _clean_optional_float(it.get("discount_rate"), f"CK dòng {idx+1}", warnings),
+                "tax_rate": _clean_optional_float(it.get("tax_rate"), f"Thuế suất dòng {idx+1}", warnings),
+                "amount": _clean_optional_float(it.get("amount") or it.get("amt"), f"Thành tiền dòng {idx+1}", warnings),
+                "line_type": _clean_optional_str(it.get("line_type")),
+            }
+            # Warn if description is missing — do NOT fabricate
+            if item["description"] is None:
+                warnings.append(f"⚠️ Dòng hàng {idx+1}: không đọc được tên hàng hóa/dịch vụ.")
+            clean_items.append(item)
 
-    # Ensure items array has clean dictionaries
-    clean_items = []
-    for it in items:
-        if isinstance(it, dict):
-            clean_items.append({
-                "description": str(it.get("description") or it.get("desc") or "Hàng hóa / Dịch vụ"),
-                "quantity": clean_float(it.get("quantity") or it.get("qty") or 1, "Số lượng") or 1,
-                "unit_price": clean_float(it.get("unit_price") or it.get("price") or subtotal, "Đơn giá"),
-                "amount": clean_float(it.get("amount") or it.get("amt") or subtotal, "Thành tiền")
-            })
+    # ── Custom fields ─────────────────────────────────────────────────────
+    raw_custom = raw_values.get("custom_fields")
+    custom_fields: Dict[str, Any] = raw_custom if isinstance(raw_custom, dict) else {}
 
     normalized = {
         "supplier_name": supplier_name,
         "supplier_tax_id": supplier_tax_id,
+        "buyer_name": buyer_name,
+        "buyer_tax_id": buyer_tax_id,
+        "invoice_template_number": invoice_template_number,
+        "invoice_series": invoice_series,
         "invoice_number": invoice_number,
         "invoice_date": invoice_date,
         "currency": currency,
         "subtotal": subtotal,
+        "discount_amount": discount_amount,
+        "fees": fees,
         "tax_amount": tax_amount,
         "total_amount": total_amount,
+        "tax_breakdown": tax_breakdown,
         "items": clean_items,
-        "custom_fields": raw_values.get("custom_fields")
-        if isinstance(raw_values.get("custom_fields"), dict) else {},
+        "custom_fields": custom_fields,
     }
 
     return normalized, warnings
@@ -135,18 +212,29 @@ def parse_line_items_from_text(lines: List[str], subtotal: float) -> List[Dict[s
 
 
 def extract_with_heuristics(text: str, filename: str) -> tuple[Dict[str, Any], List[str]]:
-    """Fallback rule-based text parser for Vietnamese & English invoices."""
+    """Fallback rule-based text parser for Vietnamese & English invoices.
+
+    NULL POLICY: Fields not found in the document return None, not 0.0 or empty string.
+    The caller (_normalize_extraction_values) will handle None → warnings for review.
+    """
     warnings: List[str] = []
     result: Dict[str, Any] = {
-        "supplier_name": "",
-        "supplier_tax_id": "",
-        "invoice_number": "",
-        "invoice_date": "",
-        "currency": "VND",
-        "subtotal": 0.0,
-        "tax_amount": 0.0,
-        "total_amount": 0.0,
-        "items": []
+        "supplier_name": None,
+        "supplier_tax_id": None,
+        "buyer_name": None,
+        "buyer_tax_id": None,
+        "invoice_template_number": None,
+        "invoice_series": None,
+        "invoice_number": None,
+        "invoice_date": None,
+        "currency": None,   # Never default to "VND" — let validator or human decide
+        "subtotal": None,
+        "discount_amount": None,
+        "fees": None,
+        "tax_amount": None,
+        "total_amount": None,
+        "tax_breakdown": [],
+        "items": [],
     }
 
     if not text or "[No extractable text found" in text:
@@ -195,14 +283,12 @@ def extract_with_heuristics(text: str, filename: str) -> tuple[Dict[str, Any], L
 
     # 3. Invoice Number
     if not result["invoice_number"]:
-        # Specific invoice number markers
         inv_num_match = re.search(
             r'(?:Số\s*\((?:No\.|No)\)|Số\s*hóa\s*đơn|Hóa\s*đơn\s*#|Invoice\s*No\.?)(?:\s*\([^)]*\))?[:\s]*([A-Z0-9\-\/]{1,20})',
             text,
             re.IGNORECASE,
         )
         if not inv_num_match:
-            # Match "Số: 12345" but strictly avoid "Mã số thuế", "Số tài khoản", "Số điện thoại", "Số lượng", "Số tiền"
             inv_num_match = re.search(
                 r'(?<!Mã\s)(?<!tài\skhoản\s)(?<!điện\sthoại\s)(?<!hộ\schiếu\s)(?<!lượng\s)(?<!tiền\s)(?:^|\n)\s*Số[:\s]+([0-9]{4,10}|[A-Z0-9\-\/]{6,20})',
                 text,
@@ -210,11 +296,10 @@ def extract_with_heuristics(text: str, filename: str) -> tuple[Dict[str, Any], L
             )
         if inv_num_match:
             val = inv_num_match.group(1).strip()
-            # Avoid invalid false positives like "thu", "thue", "tien"
             if val.lower() not in {"thu", "thue", "tien", "luong", "vat"}:
                 result["invoice_number"] = val
 
-        # Fallback from filename if not found or invalid (e.g. 1C26TAP_00008228_0317333953.pdf)
+        # Fallback from filename
         if not result["invoice_number"] and filename:
             fn_match = re.search(r'_([0-9]{4,8})[_.]', filename)
             if fn_match:
@@ -230,13 +315,32 @@ def extract_with_heuristics(text: str, filename: str) -> tuple[Dict[str, Any], L
         else:
             result["invoice_date"] = raw_date
 
-    # 5. Financial Amounts (Subtotal, VAT, Total Amount)
-    def parse_num(val_str: str) -> float:
+    # 4b. Currency — detect from explicit ISO code or symbol in text; never default
+    _CURRENCY_PATTERNS = [
+        (r'\bVND\b', 'VND'),
+        (r'\bVNĐ\b', 'VND'),
+        (r'\bUSD\b', 'USD'),
+        (r'\bEUR\b', 'EUR'),
+        (r'\bGBP\b', 'GBP'),
+        (r'\bJPY\b', 'JPY'),
+        (r'\bCNY\b', 'CNY'),
+        (r'\bTHB\b', 'THB'),
+        (r'\bSGD\b', 'SGD'),
+        (r'(?:đồng|Đồng)\b', 'VND'),   # Vietnamese "đồng" → VND
+        (r'\$(?!\d{10})', 'USD'),        # $ symbol but not a tax ID
+    ]
+    for pattern, code in _CURRENCY_PATTERNS:
+        if re.search(pattern, text, re.IGNORECASE):
+            result["currency"] = code
+            break
+
+    # 5. Financial Amounts — None when not found
+    def parse_num(val_str: str) -> Optional[float]:
         clean = val_str.replace('.', '').replace(',', '')
         try:
             return float(clean)
         except ValueError:
-            return 0.0
+            return None
 
     tax_match = re.search(
         r'(?:Tiền\s*thuế\s*GTGT|VAT\s*amount|tax\s*amount)(?:\s*\([^)]*\))?[:\s]*(\d{1,3}(?:[\.,]\d{3})*(?:[\.,]\d{2})?)',
@@ -267,26 +371,30 @@ def extract_with_heuristics(text: str, filename: str) -> tuple[Dict[str, Any], L
     if total_match:
         result["total_amount"] = parse_num(total_match.group(1))
 
-    # Cross-calculate financial totals if some are missing
-    if result["subtotal"] and result["tax_amount"] and not result["total_amount"]:
-        result["total_amount"] = round(result["subtotal"] + result["tax_amount"], 2)
-    elif result["total_amount"] and result["tax_amount"] and not result["subtotal"]:
-        result["subtotal"] = round(result["total_amount"] - result["tax_amount"], 2)
-    elif result["total_amount"] and result["subtotal"] and not result["tax_amount"] and result["total_amount"] >= result["subtotal"]:
-        result["tax_amount"] = round(result["total_amount"] - result["subtotal"], 2)
+    # Cross-calculate financial totals if some are missing (only from heuristics, not inventions)
+    sub = result["subtotal"]
+    tax = result["tax_amount"]
+    total = result["total_amount"]
+    if sub and tax and not total:
+        result["total_amount"] = round(sub + tax, 2)
+    elif total and tax and not sub:
+        result["subtotal"] = round(total - tax, 2)
+    elif total and sub and not tax and total >= sub:
+        result["tax_amount"] = round(total - sub, 2)
 
-    clean_text_for_amounts = re.sub(r'(?:MST|Mã số thuế|Tax code|Tax ID|So tai khoan|Số tài khoản)[:\s]*\d+', '', text, flags=re.IGNORECASE)
-
+    # Last-resort: scan for any large number with a total-related label
     if not result["total_amount"] and not result["subtotal"] and not result["tax_amount"]:
+        clean_text_for_amounts = re.sub(r'(?:MST|Mã số thuế|Tax code|Tax ID|So tai khoan|Số tài khoản)[:\s]*\d+', '', text, flags=re.IGNORECASE)
         amounts = re.findall(r'(\d{1,3}(?:[\.,]\d{3})*(?:[\.,]\d{2})?)', clean_text_for_amounts)
         valid_numbers = []
         for a in amounts:
-            num = parse_num(a)
-            if num > 500 and len(a.replace('.', '').replace(',', '')) <= 9:
-                valid_numbers.append(num)
+            n = parse_num(a)
+            if n is not None and n > 500 and len(a.replace('.', '').replace(',', '')) <= 9:
+                valid_numbers.append(n)
         if valid_numbers and any(k in clean_text_for_amounts.lower() for k in ['tổng', 'thanh toán', 'total', 'tiền']):
             result["total_amount"] = max(valid_numbers)
 
+    # Cross-fill subtotal from total when still missing
     if result["total_amount"] and not result["subtotal"]:
         if result["tax_amount"]:
             result["subtotal"] = round(result["total_amount"] - result["tax_amount"], 2)
@@ -297,9 +405,10 @@ def extract_with_heuristics(text: str, filename: str) -> tuple[Dict[str, Any], L
         warnings.append("⚠️ Chưa nhận diện được số tiền thanh toán.")
 
     # 6. Line items parsing
-    result["items"] = parse_line_items_from_text(lines, result["subtotal"])
+    result["items"] = parse_line_items_from_text(lines, result["subtotal"] or 0)
 
     return result, warnings
+
 
 
 def _call_gemini_api(

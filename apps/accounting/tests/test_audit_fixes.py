@@ -14,12 +14,13 @@ from accounting_app.smart_extractor import (
 
 
 def test_no_data_fabrication_heuristics():
-    """Verify that unparseable text does NOT fabricate dates like 2026-08-09 or fake totals."""
+    """Verify that unparseable text does NOT fabricate dates or totals — returns None."""
     empty_text = "[No extractable text found in file test.png]"
     values, warnings = extract_with_heuristics(empty_text, "test.png")
 
-    assert values["invoice_date"] == ""
-    assert values["total_amount"] == 0.0
+    # Under NULL policy: missing fields are None, never fabricated defaults
+    assert values["invoice_date"] is None
+    assert values["total_amount"] is None
     assert any("Không thể trích xuất chữ" in w or "Chưa nhận diện" in w for w in warnings)
 
 
@@ -29,9 +30,10 @@ def test_large_identifier_is_not_used_as_total():
         "invoice.pdf",
     )
 
-    assert values["total_amount"] == 0.0
-    assert values["subtotal"] == 0.0
-    assert values["tax_amount"] == 0.0
+    # None — no financial labels found, so no amounts should be returned
+    assert values["total_amount"] is None
+    assert values["subtotal"] is None
+    assert values["tax_amount"] is None
     assert values["items"] == []
     assert warnings
 
@@ -52,6 +54,7 @@ def test_labeled_amounts_are_extracted_without_calculation():
 
 
 def test_invalid_gemini_values_are_normalized_safely():
+    """Invalid field types return None (not fabricated defaults) under the new NULL policy."""
     values, warnings = _normalize_extraction_values({
         "supplier_name": ["not", "a", "string"],
         "total_amount": "not-a-number",
@@ -60,19 +63,25 @@ def test_invalid_gemini_values_are_normalized_safely():
         "unexpected": "discard me",
     })
 
-    assert values["supplier_name"] == ""
-    assert values["total_amount"] == 0.0
-    assert values["tax_amount"] == 0.0
+    # supplier_name: list is not a valid string — _clean_optional_str returns None
+    assert values["supplier_name"] is None
+    # total_amount: unparseable string — returns None with warning
+    assert values["total_amount"] is None
+    # tax_amount: negative value — allowed but flagged (negative can be valid adjustment)
+    assert values["tax_amount"] == -10
+    # items: non-list returns empty list (safe default for an array field)
     assert values["items"] == []
     assert "unexpected" not in values
+    # Warnings must be emitted for the unreadable fields
     assert warnings
 
 
 def test_non_finite_gemini_amount_is_rejected():
+    """Non-finite floats return None (not 0.0) under the new NULL policy."""
     values, warnings = _normalize_extraction_values({"total_amount": float("inf")})
 
-    assert values["total_amount"] == 0.0
-    assert math.isfinite(values["total_amount"])
+    # None — not fabricated as 0.0
+    assert values["total_amount"] is None
     assert warnings
 
 
@@ -92,7 +101,8 @@ def test_overlapping_amount_label_does_not_fill_two_fields():
     )
 
     assert values["tax_amount"] == 80_000
-    assert values["total_amount"] == 0.0
+    # total_amount: not found in heuristic — returns None under NULL policy
+    assert values["total_amount"] is None
 
 
 def test_overlapping_vietnamese_label_prefers_the_longer_label():
@@ -102,7 +112,8 @@ def test_overlapping_vietnamese_label_prefers_the_longer_label():
     )
 
     assert values["subtotal"] == 1_000_000
-    assert values["total_amount"] == 0.0
+    # "Tổng cộng tiền hàng" maps to subtotal only — total_amount not found → None
+    assert values["total_amount"] is None
 
 
 def test_later_amount_label_on_the_same_line_is_still_detected():
