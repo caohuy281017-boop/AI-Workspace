@@ -502,6 +502,24 @@ def _call_gemini_api(
             raise last_exc
 
 
+def _render_pdf_to_base64_pngs(pdf_bytes: bytes) -> list[str]:
+    """Render PDF pages to PNG base64 strings for multimodal vision models."""
+    import io
+    import base64
+    images_b64: list[str] = []
+    try:
+        import pypdfium2 as pdfium
+        pdf = pdfium.PdfDocument(pdf_bytes)
+        for page in pdf:
+            img = page.render(scale=2.0).to_pil()
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            images_b64.append(base64.b64encode(buf.getvalue()).decode("utf-8"))
+    except Exception as exc:
+        logger.warning("PDF page rendering failed: %s", exc)
+    return images_b64
+
+
 def _call_openai_api(
     api_key: str,
     model_name: str,
@@ -515,19 +533,29 @@ def _call_openai_api(
     import urllib.request
     import urllib.error
 
+    # Vision-First: build user content with multimodal images
+    user_content: Any
+    image_parts: list[dict[str, Any]] = []
+
+    if raw_bytes:
+        if media_type.startswith("image/"):
+            b64 = base64.b64encode(raw_bytes).decode("utf-8")
+            image_parts.append({"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{b64}"}})
+        elif media_type == "application/pdf":
+            png_list = _render_pdf_to_base64_pngs(raw_bytes)
+            for b64 in png_list:
+                image_parts.append({"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}})
+
+    if image_parts:
+        user_content = [
+            {"type": "text", "text": f"{prompt}\nDocument Text:\n{document_text}"}
+        ] + image_parts
+    else:
+        user_content = f"{prompt}\n\nDocument Text:\n{document_text}"
+
     try:
         from openai import OpenAI
         client = OpenAI(api_key=api_key)
-        user_content: Any
-        if raw_bytes and media_type.startswith("image/"):
-            b64 = base64.b64encode(raw_bytes).decode("utf-8")
-            user_content = [
-                {"type": "text", "text": f"{prompt}\nDocument Text:\n{document_text}"},
-                {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{b64}"}}
-            ]
-        else:
-            user_content = f"{prompt}\n\nDocument Text:\n{document_text}"
-
         completion = client.chat.completions.create(
             model=model_name,
             messages=[{"role": "user", "content": user_content}],
@@ -538,16 +566,6 @@ def _call_openai_api(
     except ImportError:
         # Fallback to direct OpenAI REST API
         url = "https://api.openai.com/v1/chat/completions"
-        user_content = []
-        if raw_bytes and media_type.startswith("image/"):
-            b64 = base64.b64encode(raw_bytes).decode("utf-8")
-            user_content = [
-                {"type": "text", "text": f"{prompt}\nDocument Text:\n{document_text}"},
-                {"type": "image_url", "image_url": {"url": f"data:{media_type};base64,{b64}"}}
-            ]
-        else:
-            user_content = f"{prompt}\n\nDocument Text:\n{document_text}"
-
         payload = {
             "model": model_name,
             "messages": [{"role": "user", "content": user_content}],
@@ -669,19 +687,19 @@ CRITICAL RULES — NULL POLICY:
 4. Return ONLY a valid JSON object matching these fields.
 """
 
-        # ── Document Routing Decision (Lát 5) ────────────────────
+        # ── Document Text Quality & Telemetry Observability ──────
         routing = assess_text_quality(
             text=document_text,
             media_type=document.source.media_type,
             filename=filename,
         )
         logger.info(
-            "Document %s routed to %s (quality score: %.2f, reason: %s)",
-            filename, routing.mode, routing.text_quality_score, routing.reason,
+            "Document %s evaluated with text quality score: %.2f (%s)",
+            filename, routing.text_quality_score, routing.reason,
         )
 
-        # For text_only mode: do not attach raw bytes to save tokens/bandwidth
-        effective_raw_bytes = raw_bytes if routing.mode == "multimodal_vision" else None
+        # Vision-First Unified: All formats (PDF & images) are extracted via Multimodal Vision AI
+        effective_raw_bytes = raw_bytes
 
         if active_provider == "openai" and openai_key:
             model_name = self.openai_model or os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
@@ -694,7 +712,7 @@ CRITICAL RULES — NULL POLICY:
                     media_type=document.source.media_type,
                     document_text=document_text,
                 )
-                provider_label = f"OpenAI-{model_name} [{routing.mode}]"
+                provider_label = f"OpenAI-{model_name} [Vision]"
             except Exception as exc:
                 logger.warning("OpenAI extraction failed: %s. Falling back to heuristic parser.", exc)
                 warnings.append(f"OpenAI API fallback: {exc}")
@@ -711,7 +729,7 @@ CRITICAL RULES — NULL POLICY:
                     media_type=document.source.media_type,
                     document_text=document_text,
                 )
-                provider_label = f"Gemini-{model_name} [{routing.mode}]"
+                provider_label = f"Gemini-{model_name} [Vision]"
             except Exception as exc:
                 logger.warning("Gemini extraction failed: %s. Falling back to heuristic parser.", exc)
                 warnings.append(f"Gemini API fallback: {exc}")

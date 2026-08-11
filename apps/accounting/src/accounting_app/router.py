@@ -74,14 +74,48 @@ def detect_magic_format(content: bytes) -> DocumentFormat | None:
     return None
 
 
+import io
+import os
+
+MAX_PDF_PAGES = int(os.environ.get("MAX_PDF_PAGES", "10"))
+
+
+def validate_pdf_page_limit(content: bytes, max_pages: int = MAX_PDF_PAGES) -> int:
+    """Validate that a PDF does not exceed the page limit.
+
+    Raises ValueError with PAGE_LIMIT_EXCEEDED if page count > max_pages.
+    """
+    page_count = 1
+    try:
+        import pypdf
+        reader = pypdf.PdfReader(io.BytesIO(content))
+        page_count = len(reader.pages)
+    except Exception:
+        try:
+            import pypdfium2 as pdfium
+            pdf = pdfium.PdfDocument(content)
+            page_count = len(pdf)
+        except Exception:
+            page_count = 1
+
+    if page_count > max_pages:
+        raise ValueError(
+            f"PAGE_LIMIT_EXCEEDED: PDF contains {page_count} pages, exceeding the limit of {max_pages} pages."
+        )
+    return page_count
+
+
 def classify_document(
     filename: str,
     declared_media_type: str,
     content: bytes,
+    *,
+    max_pdf_pages: int = MAX_PDF_PAGES,
 ) -> DocumentType:
     """Classify document by verifying MIME type, filename extension, and magic bytes.
 
     Raises ValueError with FILE_TYPE_MISMATCH if any source is inconsistent.
+    Raises ValueError with PAGE_LIMIT_EXCEEDED if PDF exceeds max page limit.
     """
     ext = Path(filename).suffix.lower()
     ext_format = EXTENSION_TO_FORMAT.get(ext)
@@ -104,6 +138,9 @@ def classify_document(
             f"Extension suggests '{ext_format}', declared MIME suggests '{mime_format}', "
             f"but magic bytes indicate '{magic_format}'."
         )
+
+    if magic_format == "pdf":
+        validate_pdf_page_limit(content, max_pages=max_pdf_pages)
 
     canonical_mime = CANONICAL_MIME_TYPES[magic_format]
     is_image = magic_format in {"jpeg", "png", "webp", "tiff"}

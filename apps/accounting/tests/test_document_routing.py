@@ -299,3 +299,80 @@ def test_sync_service_and_worker_have_consistent_decisions(tmp_path, caplog):
     assert success is True
     assert parser_spy.called_count == 0  # Both bypassed PDF parser completely!
     assert "PDF parsing failed" not in caplog.text
+
+
+def test_pdf_exceeding_page_limit_rejected():
+    from accounting_app.router import validate_pdf_page_limit
+    import io
+    import pypdfium2 as pdfium
+
+    # Create a 5-page PDF using pypdfium2
+    pdf = pdfium.PdfDocument.new()
+    for _ in range(5):
+        pdf.new_page(width=100, height=100)
+    buf = io.BytesIO()
+    pdf.save(buf)
+    pdf_5_pages = buf.getvalue()
+
+    # Allowed if max_pages >= 5
+    count = validate_pdf_page_limit(pdf_5_pages, max_pages=5)
+    assert count == 5
+
+    # Rejected if max_pages < 5
+    with pytest.raises(ValueError, match="PAGE_LIMIT_EXCEEDED"):
+        classify_document("long_invoice.pdf", "application/pdf", pdf_5_pages, max_pdf_pages=3)
+
+
+def test_vision_first_always_passes_raw_bytes_for_pdf_and_image():
+    from accounting_app.smart_extractor import SmartInvoiceExtractor
+    from accounting_app.schema import INVOICE_SCHEMA_V2, SCHEMA_NAME, SCHEMA_VERSION
+    from platform_core.domain import ContentBlock, FileReference, ParsedDocument
+    from unittest.mock import patch
+
+    extractor = SmartInvoiceExtractor(api_key="test-key", provider="gemini")
+    
+    # 1. Clean digital PDF with perfect text layer
+    pdf_source = FileReference("f1", "ws1", "digital.pdf", "application/pdf", 100, "")
+    pdf_doc = ParsedDocument(
+        source=pdf_source,
+        blocks=(
+            ContentBlock(block_id="b1", kind="text", text="CÔNG TY CỔ PHẦN CÔNG NGHỆ ABC MST: 0101234567 HÓA ĐƠN GIÁ TRỊ GIA TĂNG Tổng cộng: 5000000 VND"),
+        ),
+        parser="pdf-parser",
+    )
+    mock_pdf_bytes = b"%PDF-1.4 sample digital pdf"
+
+    with patch("accounting_app.smart_extractor._call_gemini_api") as mock_gemini:
+        mock_gemini.return_value = {"supplier_name": "ABC", "total_amount": 5000000.0}
+        res = extractor.extract(
+            pdf_doc,
+            schema_name=SCHEMA_NAME,
+            schema_version=SCHEMA_VERSION,
+            schema=INVOICE_SCHEMA_V2,
+            raw_bytes=mock_pdf_bytes,
+        )
+        assert res.values["supplier_name"] == "ABC"
+        assert res.provider.endswith("[Vision]")
+        # CRITICAL: raw_bytes was passed to Gemini Multimodal Vision even though text quality is high
+        assert mock_gemini.call_args[1]["raw_bytes"] == mock_pdf_bytes
+        assert mock_gemini.call_args[1]["media_type"] == "application/pdf"
+
+    # 2. Image receipt
+    img_source = FileReference("f2", "ws1", "receipt.jpg", "image/jpeg", 50, "")
+    img_doc = ParsedDocument(source=img_source, blocks=(), parser="image-direct")
+    mock_jpg_bytes = b"\xFF\xD8\xFF\xE0 sample jpeg"
+
+    with patch("accounting_app.smart_extractor._call_gemini_api") as mock_gemini:
+        mock_gemini.return_value = {"supplier_name": "Store XYZ", "total_amount": 50000.0}
+        res_img = extractor.extract(
+            img_doc,
+            schema_name=SCHEMA_NAME,
+            schema_version=SCHEMA_VERSION,
+            schema=INVOICE_SCHEMA_V2,
+            raw_bytes=mock_jpg_bytes,
+        )
+        assert res_img.values["supplier_name"] == "Store XYZ"
+        assert res_img.provider.endswith("[Vision]")
+        assert mock_gemini.call_args[1]["raw_bytes"] == mock_jpg_bytes
+        assert mock_gemini.call_args[1]["media_type"] == "image/jpeg"
+
