@@ -511,6 +511,21 @@ body {
 .fpill.active  { background: var(--c-brand-dim); border-color: rgba(16,185,129,.35); color: var(--c-brand); }
 .fpill:hover:not(.active) { border-color: var(--c-border-hover); color: var(--t-2); }
 
+/* Invoice type pills */
+.type-pill {
+  padding: 5px 12px; border-radius: var(--r-pill);
+  background: transparent; border: 1px solid var(--c-border);
+  color: var(--t-3); font-size: .78rem; font-weight: 500;
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease), background var(--dur) var(--ease);
+  font-family: inherit;
+}
+.type-pill.active  { background: rgba(59,130,246,.1); border-color: rgba(59,130,246,.4); color: #3b82f6; }
+.type-pill:hover:not(.active) { border-color: var(--c-border-hover); color: var(--t-2); }
+
+/* Info badge color (for đầu vào) */
+.badge-info { background: rgba(59,130,246,.12); color: #3b82f6; border: 1px solid rgba(59,130,246,.25); }
+
 .data-table {
   width: 100%; border-collapse: collapse;
   font-size: .83rem; background: var(--c-surface);
@@ -754,6 +769,39 @@ body {
   padding: 12px 18px; border-top: 1px solid var(--c-border);
   display: flex; justify-content: flex-end; gap: 8px;
   background: var(--c-inspector-footer);
+}
+
+/* Custom accounting fields */
+.custom-fields-section { max-width: 980px; margin-top: 20px; }
+.settings-help { color: var(--t-3); font-size: .82rem; margin: -4px 0 14px; }
+.custom-field-create {
+  display: grid; grid-template-columns: 1.4fr 1fr 150px auto;
+  gap: 8px; align-items: center; margin-bottom: 14px;
+}
+.custom-fields-list { display: flex; flex-direction: column; gap: 8px; }
+.custom-fields-empty {
+  border: 1px dashed var(--c-border); border-radius: var(--r-md);
+  padding: 22px; text-align: center; color: var(--t-3);
+}
+.custom-field-card {
+  display: grid; grid-template-columns: 34px 1fr auto; gap: 10px;
+  align-items: center; border: 1px solid var(--c-border);
+  border-radius: var(--r-md); padding: 10px; background: var(--c-surface);
+}
+.custom-field-card.dragging { opacity: .45; border-color: var(--c-brand); }
+.drag-handle { cursor: grab; text-align: center; font-size: 1.2rem; color: var(--t-3); user-select: none; }
+.custom-field-grid { display: grid; grid-template-columns: 1.3fr 130px 1fr; gap: 8px; align-items: center; }
+.custom-field-grid code { color: var(--c-brand); font-size: .75rem; }
+.custom-field-main { display: flex; flex-direction: column; gap: 8px; }
+.custom-field-options { display: flex; flex-wrap: wrap; gap: 16px; color: var(--t-2); font-size: .78rem; }
+.custom-field-options label { display: flex; gap: 5px; align-items: center; }
+.custom-field-actions { display: flex; gap: 6px; }
+.btn.danger { color: var(--c-warn); }
+
+@media (max-width: 800px) {
+  .custom-field-create, .custom-field-grid { grid-template-columns: 1fr; }
+  .custom-field-card { grid-template-columns: 28px 1fr; }
+  .custom-field-actions { grid-column: 2; }
 }
 
 /* ═══════════════════════════════════════════

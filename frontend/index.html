@@ -208,28 +208,42 @@
           <div class="stat-icon">📑</div>
           <div>
             <div class="stat-label">Tổng hóa đơn</div>
-            <div class="stat-val text-brand" id="s-total">4</div>
+            <div class="stat-val text-brand" id="s-total">0</div>
           </div>
         </div>
         <div class="stat-box">
           <div class="stat-icon">⏳</div>
           <div>
             <div class="stat-label">Cần soi duyệt</div>
-            <div class="stat-val text-warn" id="s-review">2</div>
+            <div class="stat-val text-warn" id="s-review">0</div>
           </div>
         </div>
         <div class="stat-box">
           <div class="stat-icon">✅</div>
           <div>
             <div class="stat-label">Đã phê duyệt</div>
-            <div class="stat-val" id="s-approved">2</div>
+            <div class="stat-val" id="s-approved">0</div>
+          </div>
+        </div>
+        <div class="stat-box" style="cursor:pointer;" onclick="filterByType('dau_vao')">
+          <div class="stat-icon">📥</div>
+          <div>
+            <div class="stat-label">HĐ Đầu vào (Mua)</div>
+            <div class="stat-val" id="s-dau-vao" style="color:var(--c-info, #3b82f6);">0</div>
+          </div>
+        </div>
+        <div class="stat-box" style="cursor:pointer;" onclick="filterByType('dau_ra')">
+          <div class="stat-icon">📤</div>
+          <div>
+            <div class="stat-label">HĐ Đầu ra (Bán)</div>
+            <div class="stat-val" id="s-dau-ra" style="color:var(--c-ok);">0</div>
           </div>
         </div>
         <div class="stat-box">
           <div class="stat-icon">💰</div>
           <div>
             <div class="stat-label">Tổng tiền (VND)</div>
-            <div class="stat-val" style="font-size:1rem;" id="s-total-amount">23.380.000 ₫</div>
+            <div class="stat-val" style="font-size:1rem;" id="s-total-amount">—</div>
           </div>
         </div>
       </div>
@@ -254,19 +268,25 @@
 
         <div class="table-toolbar">
           <div class="search-wrap">
-            <input type="text" class="t-search" id="t-search" placeholder="Tìm nhà cung cấp, số hóa đơn...">
+            <input type="text" class="t-search" id="t-search" placeholder="🔍 Tìm nhà cung cấp, số hóa đơn, MST...">
           </div>
           <div class="filter-pills">
             <button class="fpill active" data-f="all">Tất cả</button>
             <button class="fpill" data-f="needs_review">Cần soi</button>
             <button class="fpill" data-f="approved">Đã duyệt</button>
           </div>
+          <div class="filter-pills" style="margin-left:8px; border-left:1px solid var(--c-border); padding-left:8px;">
+            <button class="type-pill active" data-t="all" onclick="filterByType('all')">📋 Tất cả loại</button>
+            <button class="type-pill" data-t="dau_vao" onclick="filterByType('dau_vao')">📥 Đầu vào</button>
+            <button class="type-pill" data-t="dau_ra" onclick="filterByType('dau_ra')">📤 Đầu ra</button>
+            <button class="type-pill" data-t="khac" onclick="filterByType('khac')">📌 Khác</button>
+          </div>
         </div>
 
         <table class="data-table">
           <thead>
             <tr>
-              <th>File Gốc</th>
+              <th>File Gốc / Loại</th>
               <th>Nhà Cung Cấp</th>
               <th>Số HĐ</th>
               <th>Ngày</th>
@@ -308,34 +328,79 @@
     <div class="view" id="view-settings">
       <div class="hub-header">
         <h1>⚙️ Cấu hình AI Engine</h1>
-        <p>Chọn nhà cung cấp AI và cấu hình API Key cho hệ thống.</p>
+        <p>Chọn nhà cung cấp AI và cấu hình API Key cho hệ thống (Google Gemini hoặc OpenAI ChatGPT).</p>
       </div>
       <div class="stats-row" style="grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); margin-bottom:20px;">
-        <div class="stat-box" style="cursor:pointer; border-color: var(--c-brand);">
-          <div class="stat-icon">🟢</div>
+        <div class="stat-box" id="engine-card-gemini" onclick="selectAiProvider('gemini')" style="cursor:pointer; border-color: var(--c-brand);">
+          <div class="stat-icon" id="engine-dot-gemini">🟢</div>
           <div>
-            <div class="stat-label">Đang dùng</div>
-            <div class="stat-val" style="font-size:1rem;">Google Gemini 1.5 Flash</div>
+            <div class="stat-label" id="engine-status-gemini">Đang dùng</div>
+            <div class="stat-val" style="font-size:1rem;">Google Gemini 1.5/2.0</div>
           </div>
         </div>
-        <div class="stat-box" style="cursor:pointer; opacity:.5;">
-          <div class="stat-icon">⚪</div>
+        <div class="stat-box" id="engine-card-openai" onclick="selectAiProvider('openai')" style="cursor:pointer; opacity:.7;">
+          <div class="stat-icon" id="engine-dot-openai">⚪</div>
           <div>
-            <div class="stat-label">Không hoạt động</div>
-            <div class="stat-val" style="font-size:1rem;">OpenAI GPT-4o</div>
+            <div class="stat-label" id="engine-status-openai">Không hoạt động</div>
+            <div class="stat-val" style="font-size:1rem;">OpenAI GPT-4o (ChatGPT)</div>
           </div>
         </div>
       </div>
 
-      <div class="section" style="max-width:600px;">
-        <div class="section-title">Cấu hình Gemini Vision API Key (Đọc Ảnh/PDF Scan 100% AI)</div>
-        <div class="field-group" style="margin-bottom:12px;">
-          <label class="field-label">GEMINI_API_KEY</label>
+      <div class="section" style="max-width:640px;">
+        <div class="section-title">Cấu hình API Keys AI</div>
+        
+        <div class="field-group" style="margin-bottom:14px;">
+          <label class="field-label">GEMINI_API_KEY (Google Gemini AI)</label>
           <input type="password" class="field-input" id="cfg-gemini-key" placeholder="Dán Gemini API Key (AIzaSy...) vào đây">
         </div>
-        <div style="display:flex; gap:10px;">
-          <button class="btn btn-primary btn-sm" onclick="saveGeminiKey()">💾 Lưu Cấu Hình Key</button>
-          <span id="cfg-key-status" style="font-size:.8rem; color:var(--c-ok); align-self:center;"></span>
+
+        <div class="field-group" style="margin-bottom:16px;">
+          <label class="field-label">OPENAI_API_KEY (OpenAI / ChatGPT API)</label>
+          <input type="password" class="field-input" id="cfg-openai-key" placeholder="Dán OpenAI API Key (sk-...) vào đây">
+        </div>
+
+        <div style="display:flex; gap:10px; align-items:center;">
+          <button class="btn btn-primary btn-sm" onclick="saveAiKeys()">💾 Lưu Cấu Hình AI</button>
+          <span id="cfg-key-status" style="font-size:.8rem; color:var(--c-ok);"></span>
+        </div>
+      </div>
+
+      <div class="section custom-fields-section">
+        <div class="section-title">Trường dữ liệu tùy chỉnh</div>
+        <p class="settings-help">Thêm trường riêng cho chứng từ, đặt prompt AI và kéo biểu tượng ↕ để đổi thứ tự hiển thị.</p>
+        <div class="custom-field-create">
+          <input class="field-input" id="cf-new-name" placeholder="Tên trường, ví dụ: Mã dự án">
+          <input class="field-input" id="cf-new-code" placeholder="Mã: project_code">
+          <select class="field-input" id="cf-new-type">
+            <option value="string">Văn bản</option>
+            <option value="number">Số</option>
+            <option value="boolean">Có/Không</option>
+          </select>
+          <button class="btn btn-primary btn-sm" onclick="createCustomField()">+ Thêm trường</button>
+        </div>
+        <div id="custom-fields-list" class="custom-fields-list"></div>
+      </div>
+
+      <!-- Excel Export Column Mapping Settings -->
+      <div class="section" style="margin-top:24px;">
+        <div class="section-title">📊 Tùy chỉnh Tiêu đề Cột Xuất Excel</div>
+        <p class="settings-help">Khách hàng có thể thay đổi tên cột trong file Excel để tương thích trực tiếp với phần mềm kế toán đang dùng (MISA, Fast, SAP, Bravo...) mà không cần sửa file thủ công.</p>
+        
+        <div style="display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; align-items:center;">
+          <span style="font-size:.8rem; font-weight:600; color:var(--t-2);">⚡ Mẫu phần mềm phổ biến:</span>
+          <button class="btn btn-ghost btn-sm" onclick="applyColumnPreset('misa')" title="Áp dụng chuẩn cột cho MISA SME / MISA AMIS">Mẫu MISA</button>
+          <button class="btn btn-ghost btn-sm" onclick="applyColumnPreset('fast')" title="Áp dụng chuẩn cột cho Fast Accounting">Mẫu Fast Accounting</button>
+          <button class="btn btn-ghost btn-sm" onclick="applyColumnPreset('general')" title="Khôi phục về tên cột tiếng Việt mặc định">Khôi phục Mặc định</button>
+        </div>
+
+        <div id="col-labels-list" style="display:grid; grid-template-columns:repeat(auto-fill, minmax(200px, 1fr)); gap:12px; margin-bottom:18px;">
+          <!-- Rendered dynamically by renderColumnLabelSettings() -->
+        </div>
+
+        <div style="display:flex; gap:10px; align-items:center;">
+          <button class="btn btn-primary btn-sm" onclick="saveColumnLabels()">💾 Lưu Cấu Hình Cột Excel</button>
+          <span id="col-label-status" style="font-size:.8rem; color:var(--c-ok); font-weight:500;"></span>
         </div>
       </div>
     </div>
@@ -394,6 +459,22 @@
         <div class="warn-box" id="insp-warn-box" style="display:none;"></div>
         <div class="section-title" style="font-size:.85rem; color:var(--c-brand);">Thông tin Trích Xuất AI — Có thể chỉnh sửa</div>
 
+        <!-- Invoice type + note row -->
+        <div class="field-row" style="margin-bottom:10px;">
+          <div class="field-group">
+            <label class="field-label">Loại Hóa Đơn (VAT)</label>
+            <select class="field-input" id="f-invoice-type" style="cursor:pointer;">
+              <option value="dau_vao">📥 Đầu vào — Hóa đơn Mua hàng</option>
+              <option value="dau_ra">📤 Đầu ra — Hóa đơn Bán hàng</option>
+              <option value="khac">📌 Khác (nội bộ, phiếu thu...)</option>
+            </select>
+          </div>
+          <div class="field-group" style="flex:2;">
+            <label class="field-label">Ghi chú của kế toán</label>
+            <input type="text" class="field-input" id="f-note" placeholder="Ví dụ: Đã khớp với PO-2026-001...">
+          </div>
+        </div>
+
         <div class="field-row">
           <div class="field-group">
             <label class="field-label">Tên Nhà Cung Cấp</label>
@@ -428,6 +509,8 @@
             <input type="number" class="field-input field-money" id="f-total">
           </div>
         </div>
+
+        <div id="inspector-custom-fields"></div>
 
         <hr class="divider">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">

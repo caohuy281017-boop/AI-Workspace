@@ -27,4 +27,11 @@ pdf_raw_text.txt
 data/storage/*
 !data/storage/.gitkeep
 data/*.db
-app-accounting-batch/data/*.db
+apps/accounting/data/storage/*
+!apps/accounting/data/storage/.gitkeep
+apps/accounting/data/*.db
+scripts/dev/extraction_results.json
+.env
+.tmp-*
+scratch/
+

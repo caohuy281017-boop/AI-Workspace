@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { applyConfirmedUpdate, normalizeLineItems } = require('../src/state-sync.js');
+const { applyConfirmedUpdate, updateInvoiceStatus, normalizeLineItems } = require('../src/state-sync.js');
 
 
 test('does not mutate target when persistence fails', async () => {
@@ -48,6 +48,50 @@ test('does not mutate target when persistence throws', async () => {
 });
 
 
+test('updateInvoiceStatus updates target with global STATE', async () => {
+  global.STATE = {
+    invoices: [
+      { id: 'inv-1', status: 'needs_review', ext: { supplier: 'Old' } }
+    ]
+  };
+
+  const ok = await updateInvoiceStatus(
+    'inv-1',
+    'approved',
+    { ext: { supplier: 'New' }, status: 'approved' },
+    async () => true
+  );
+
+  assert.equal(ok, true);
+  assert.equal(global.STATE.invoices[0].status, 'approved');
+  assert.equal(global.STATE.invoices[0].ext.supplier, 'New');
+
+  delete global.STATE;
+});
+
+
+test('updateInvoiceStatus does not update target when persistence fails', async () => {
+  global.STATE = {
+    invoices: [
+      { id: 'inv-2', status: 'needs_review', ext: { supplier: 'Original' } }
+    ]
+  };
+
+  const ok = await updateInvoiceStatus(
+    'inv-2',
+    'approved',
+    { ext: { supplier: 'Changed' }, status: 'approved' },
+    async () => false
+  );
+
+  assert.equal(ok, false);
+  assert.equal(global.STATE.invoices[0].status, 'needs_review');
+  assert.equal(global.STATE.invoices[0].ext.supplier, 'Original');
+
+  delete global.STATE;
+});
+
+
 test('does not fabricate a line item when extraction has none', () => {
   assert.deepEqual(normalizeLineItems(undefined), []);
   assert.deepEqual(normalizeLineItems(null), []);
@@ -59,3 +103,4 @@ test('preserves extracted line items', () => {
   const items = [{ description: 'Real service', quantity: 1, amount: 100 }];
   assert.deepEqual(normalizeLineItems(items), items);
 });
+

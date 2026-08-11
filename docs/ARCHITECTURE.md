@@ -42,7 +42,7 @@ Ports deliberately expose capability and result metadata so jobs can record whic
 
 ### Application
 
-Use cases coordinate ports, enforce workflow order, persist job state, and apply validation rules. They do not contain vendor SDK calls. The first use case will be `InvoiceBatchWorkflow`.
+Use cases coordinate ports, enforce workflow order, persist job state, and apply validation rules. They do not contain web-framework code. The first running use case is `AccountingBatchService` in `apps/accounting`.
 
 ### Adapters
 
@@ -108,10 +108,13 @@ HTTP endpoints, background job execution, object storage, relational persistence
 Selection happens through configuration and dependency injection. The application depends only on a port; a registry can choose an adapter by capability, MIME type, tenant policy, cost, or availability. Do not build a dynamic plugin platform yet.
 
 ```python
-workflow = InvoiceBatchWorkflow(
-    classifier=classifier_adapter,
+service = AccountingBatchService(
+    repository=invoice_repository,
+    storage_dir=storage_dir,
     parser=parser_adapter,
-    extractor=extraction_adapter,
+    extractor_factory=extractor_factory,
+    allowed_media_types=allowed_media_types,
+    max_file_bytes=max_file_bytes,
 )
 ```
 

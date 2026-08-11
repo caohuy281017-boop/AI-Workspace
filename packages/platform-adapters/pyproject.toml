@@ -1,0 +1,22 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "platform-adapters"
+version = "0.1.0"
+description = "Replaceable parser, LLM and export adapters for File-First AI Workspace"
+requires-python = ">=3.11"
+dependencies = [
+    "platform-core",
+    "openpyxl>=3.1",
+]
+
+[project.optional-dependencies]
+docling = ["docling==2.115.0"]
+gemini = ["google-generativeai>=0.8"]
+openai = ["openai>=1.0"]
+dev = ["pytest>=8.0", "pytest-asyncio"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/platform_adapters"]

@@ -1,55 +1,81 @@
-# File-First AI Workspace
+# AI Workspace
 
-Commercial SaaS platform that routes uploaded business files into specialized, reviewable AI workflows. Each application is **fully independent** — debug, extend, or replace any app without touching the others.
+Nền tảng File-First AI xử lý tài liệu doanh nghiệp bằng các workflow chuyên biệt, có bước kiểm duyệt của con người và khả năng thay thế parser/OCR/LLM mà không làm thay đổi nghiệp vụ.
 
-## Apps (Ứng dụng)
-
-| Folder | Sản phẩm | Trạng thái |
-| :--- | :--- | :---: |
-| [`app-accounting-batch/`](app-accounting-batch/README.md) | 🧾 Xử lý lô Hóa đơn & Kế toán | ✅ Core done |
-| [`app-doc-translator/`](app-doc-translator/) | 📄 Dịch tài liệu | 🚧 Skeleton |
-| [`app-meeting-notes/`](app-meeting-notes/) | 🎙️ Biên bản & Tóm tắt Cuộc họp | 🚧 Skeleton |
-
-## Shared Core (Dùng chung)
-
-| Folder | Nội dung |
-| :--- | :--- |
-| [`core-shared/`](core-shared/) | Domain models, port interfaces, shared adapters (Docling parser, LLM gateway, XLSX exporter) |
-
-## Tài liệu
-
-| File | Mô tả |
-| :--- | :--- |
-| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Ports & Adapters design |
-| [`docs/PRODUCT.md`](docs/PRODUCT.md) | Product scope & milestones |
-| [`docs/SUPERPOWERS_GITNEXUS_WORKFLOW.md`](docs/SUPERPOWERS_GITNEXUS_WORKFLOW.md) | TDD & Agent development discipline |
-| [`docs/REPO_MAP.md`](docs/REPO_MAP.md) | Third-party dependency & license inventory |
-
-## Quy tắc Đặt tên (Naming Convention)
-
-| Loại | Quy tắc | Ví dụ |
-| :--- | :--- | :--- |
-| App folder | `app-{tên-app}` | `app-accounting-batch`, `app-doc-translator` |
-| Shared package | `core-{tên}` | `core-shared` |
-| Python module | `snake_case` | `invoice_schema.py`, `llm_extractor.py` |
-| Python class | `PascalCase` | `InvoiceBatchWorkflow`, `XLSXExportAdapter` |
-| Reference repos | `ref-{tên}` (trong `references/`) | `ref-taxhacker` |
-
-## Luồng xử lý Milestone 1 (Hóa đơn)
+## Cấu trúc
 
 ```text
-[PDF/Image] → core-shared DoclingParser
-           → app-accounting-batch InvoiceBatchWorkflow
-           → core-shared LLMAdapter (Gemini / OpenAI / Ollama)
-           → [Human Review UI]
-           → core-shared XLSXExporter → [invoices.xlsx]
+apps/                         Ứng dụng nghiệp vụ độc lập
+  accounting/                Sản phẩm hóa đơn và kế toán (đang phát triển chính)
+  document-translator/       Bộ khung dịch tài liệu
+  meeting-notes/             Bộ khung biên bản cuộc họp
+
+packages/                     Thành phần dùng chung
+  platform-core/             Domain models và ports, không phụ thuộc nhà cung cấp
+  platform-adapters/         Docling, LLM gateway và bộ xuất XLSX
+
+server/                       Điểm khởi động HTTP
+frontend/                     Giao diện web
+scripts/dev/                  Công cụ thử nghiệm dành cho lập trình viên
+docs/                         Kiến trúc, sản phẩm và kiểm kê giấy phép
+_legacy/                      Mã cũ chỉ dùng để đối chiếu, không thuộc runtime/test
 ```
 
-## Chạy tests
+Quy tắc phụ thuộc:
 
-```bash
-# Test app-accounting-batch
-cd app-accounting-batch
-pytest tests/ -v
-# → 34 passed ✅
+```text
+apps ───────────────→ platform-core
+  │                         ↑
+  └──→ platform-adapters ───┘
+
+server → apps + adapters
+platform-core → không phụ thuộc app, web framework hoặc SDK nhà cung cấp
 ```
+
+## Accounting MVP
+
+Luồng đang chạy:
+
+```text
+Upload PDF/ảnh
+→ AccountingBatchService
+→ parser
+→ heuristic/Gemini extractor
+→ SQLite
+→ người dùng kiểm duyệt
+→ xuất XLSX các hóa đơn đã duyệt
+```
+
+Mỗi file lỗi được cô lập, không làm hỏng toàn bộ batch. Khóa Gemini truyền trong request chỉ thuộc request/job đó và không được ghi vào trạng thái môi trường toàn tiến trình.
+
+## Chạy ứng dụng
+
+Từ thư mục gốc:
+
+```powershell
+python server/run_server.py
+```
+
+Mở `http://localhost:8000`.
+
+## Chạy kiểm thử
+
+```powershell
+python -m pytest -q
+```
+
+Kiểm thử Docling thật được đánh dấu `integration` và không chạy mặc định:
+
+```powershell
+python -m pytest -m integration packages/platform-adapters/tests/integration
+```
+
+## Nguyên tắc phát triển
+
+- Tìm và mở rộng thành phần hiện có trước khi tạo class/package mới.
+- Nghiệp vụ của từng app nằm trong app đó; không đưa model kế toán vào lõi dùng chung.
+- SDK Gemini, OpenAI, Docling và openpyxl chỉ xuất hiện ở lớp adapter/composition.
+- API chỉ nhận/trả dữ liệu và gọi application service; không tự điều phối workflow dài.
+- Mọi engine bên thứ ba phải được ghi nhận trong `docs/REPO_MAP.md` trước khi tích hợp.
+
+Xem thêm [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/PRODUCT.md](docs/PRODUCT.md) và [docs/STRUCTURE.md](docs/STRUCTURE.md).
