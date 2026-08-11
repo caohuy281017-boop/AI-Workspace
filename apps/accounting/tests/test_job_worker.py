@@ -198,3 +198,49 @@ class TestJobQueueAndWorker(TestCase):
         b_data = b_res.json()
         self.assertEqual(b_data["total_jobs"], 2)
         self.assertEqual(b_data["queued_count"], 2)
+
+    def test_worker_start_stop_thread_lifecycle(self):
+        # Create a file on disk and in repo
+        file_path = self.storage_dir / "lifecycle_sample.pdf"
+        file_path.write_bytes(b"%PDF-1.4 sample invoice text")
+
+        self.repo.save_batch(
+            "b-lifecycle",
+            items=[{
+                "file_id": "f-lifecycle",
+                "file_name": "lifecycle_sample.pdf",
+                "media_type": "application/pdf",
+                "storage_uri": str(file_path),
+                "status": "queued",
+                "extraction": {},
+                "warnings": [],
+                "errors": [],
+                "validation_status": "ok",
+                "validation_errors": [],
+            }],
+            workspace_id="ws-life",
+        )
+
+        # Enqueue job
+        job = self.repo.enqueue_job("b-lifecycle", "f-lifecycle", workspace_id="ws-life")
+
+        # Start worker thread
+        self.worker.start()
+        self.assertIsNotNone(self.worker._thread)
+        self.assertTrue(self.worker._thread.is_alive())
+
+        # Wait for worker background thread to claim and finish the job
+        completed = False
+        for _ in range(30):
+            time.sleep(0.1)
+            j = self.repo.get_job(job["job_id"])
+            if j and j.get("status") == "completed":
+                completed = True
+                break
+
+        self.assertTrue(completed, "Worker thread should process queued job asynchronously")
+
+        # Stop worker thread
+        self.worker.stop(timeout=2.0)
+        self.assertFalse(self.worker._thread.is_alive(), "Worker thread should terminate cleanly")
+

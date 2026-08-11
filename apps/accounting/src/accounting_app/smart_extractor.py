@@ -442,64 +442,55 @@ def _call_gemini_api(
     import urllib.request
     import urllib.error
 
-    models_to_try = [model_name]
-    if "gemini-flash-latest" not in models_to_try:
-        models_to_try.append("gemini-flash-latest")
+    if not model_name:
+        raise ValueError("MISSING_MODEL_CONFIG: Model name is required for Gemini API call.")
 
-    last_exc = None
-    for cur_model in models_to_try:
-        try:
-            try:
-                import google.generativeai as genai
-                genai.configure(api_key=api_key)
-                model = genai.GenerativeModel(cur_model)
-                inputs = [prompt]
-                if raw_bytes and media_type.startswith(("image/", "application/pdf")):
-                    inputs.append({"mime_type": media_type, "data": raw_bytes})
-                else:
-                    inputs.append(f"Document Text:\n{document_text}")
-                response = model.generate_content(inputs)
-                raw_text = response.text.strip()
-            except ImportError:
-                # Direct REST API
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{cur_model}:generateContent?key={api_key}"
-                parts: list[dict[str, Any]] = [{"text": prompt}]
-                if raw_bytes and media_type.startswith(("image/", "application/pdf")):
-                    b64_data = base64.b64encode(raw_bytes).decode("utf-8")
-                    parts.append({
-                        "inline_data": {
-                            "mime_type": media_type,
-                            "data": b64_data,
-                        }
-                    })
-                else:
-                    parts.append({"text": f"Document Text:\n{document_text}"})
-
-                payload = {
-                    "contents": [{"parts": parts}],
-                    "generationConfig": {"temperature": 0.0, "responseMimeType": "application/json"},
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(model_name)
+        inputs = [prompt]
+        if raw_bytes and media_type.startswith(("image/", "application/pdf")):
+            inputs.append({"mime_type": media_type, "data": raw_bytes})
+        else:
+            inputs.append(f"Document Text:\n{document_text}")
+        response = model.generate_content(inputs)
+        raw_text = response.text.strip()
+    except ImportError:
+        # Direct REST API
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={api_key}"
+        parts: list[dict[str, Any]] = [{"text": prompt}]
+        if raw_bytes and media_type.startswith(("image/", "application/pdf")):
+            b64_data = base64.b64encode(raw_bytes).decode("utf-8")
+            parts.append({
+                "inline_data": {
+                    "mime_type": media_type,
+                    "data": b64_data,
                 }
-                req = urllib.request.Request(
-                    url,
-                    data=json.dumps(payload).encode("utf-8"),
-                    headers={"Content-Type": "application/json"},
-                    method="POST",
-                )
-                with urllib.request.urlopen(req, timeout=30) as resp:
-                    resp_data = json.loads(resp.read().decode("utf-8"))
-                    candidates = resp_data.get("candidates", [])
-                    if not candidates:
-                        raise ValueError("No candidates returned from Gemini API")
-                    raw_text = candidates[0]["content"]["parts"][0]["text"].strip()
+            })
+        else:
+            parts.append({"text": f"Document Text:\n{document_text}"})
 
-            if raw_text.startswith("```"):
-                raw_text = re.sub(r'^```(?:json)?\n|\n```$', '', raw_text, flags=re.MULTILINE).strip()
-            return json.loads(raw_text)
-        except Exception as exc:
-            last_exc = exc
-            if cur_model != models_to_try[-1]:
-                continue
-            raise last_exc
+        payload = {
+            "contents": [{"parts": parts}],
+            "generationConfig": {"temperature": 0.0, "responseMimeType": "application/json"},
+        }
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            resp_data = json.loads(resp.read().decode("utf-8"))
+            candidates = resp_data.get("candidates", [])
+            if not candidates:
+                raise ValueError("No candidates returned from Gemini API")
+            raw_text = candidates[0]["content"]["parts"][0]["text"].strip()
+
+    if raw_text.startswith("```"):
+        raw_text = re.sub(r'^```(?:json)?\n|\n```$', '', raw_text, flags=re.MULTILINE).strip()
+    return json.loads(raw_text)
 
 
 def _render_pdf_to_base64_pngs(pdf_bytes: bytes) -> list[str]:
@@ -516,7 +507,10 @@ def _render_pdf_to_base64_pngs(pdf_bytes: bytes) -> list[str]:
             img.save(buf, format="PNG")
             images_b64.append(base64.b64encode(buf.getvalue()).decode("utf-8"))
     except Exception as exc:
-        logger.warning("PDF page rendering failed: %s", exc)
+        raise ValueError(f"PDF_RENDER_FAILED: Failed to render PDF pages into images for OpenAI Vision: {exc}") from exc
+
+    if not images_b64:
+        raise ValueError("PDF_RENDER_FAILED: No pages could be rendered from PDF document.")
     return images_b64
 
 
@@ -528,10 +522,13 @@ def _call_openai_api(
     media_type: str,
     document_text: str,
 ) -> dict[str, Any]:
-    """Call OpenAI ChatGPT API (e.g. gpt-4o, gpt-4o-mini) using openai SDK or REST API."""
+    """Call OpenAI ChatGPT API using openai SDK or REST API."""
     import base64
     import urllib.request
     import urllib.error
+
+    if not model_name:
+        raise ValueError("MISSING_MODEL_CONFIG: Model name is required for OpenAI API call.")
 
     # Vision-First: build user content with multimodal images
     user_content: Any
@@ -638,7 +635,7 @@ class SmartInvoiceExtractor:
                 active_provider = "gemini"
 
         values: dict[str, Any] = {}
-        provider_label = "HeuristicInvoiceParser"
+        provider_label = "HeuristicInvoiceParser [Zero-Dependency Baseline]"
 
         custom_schema = schema.get("properties", {}).get("custom_fields", {})
         custom_properties = custom_schema.get("properties", {})
@@ -702,39 +699,55 @@ CRITICAL RULES — NULL POLICY:
         effective_raw_bytes = raw_bytes
 
         if active_provider == "openai" and openai_key:
-            model_name = self.openai_model or os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
-            try:
-                values = _call_openai_api(
-                    api_key=openai_key,
-                    model_name=model_name,
-                    prompt=prompt,
-                    raw_bytes=effective_raw_bytes,
-                    media_type=document.source.media_type,
-                    document_text=document_text,
-                )
-                provider_label = f"OpenAI-{model_name} [Vision]"
-            except Exception as exc:
-                logger.warning("OpenAI extraction failed: %s. Falling back to heuristic parser.", exc)
-                warnings.append(f"OpenAI API fallback: {exc}")
+            model_name = self.openai_model or os.environ.get("OPENAI_MODEL")
+            if not model_name:
+                logger.warning("OpenAI model not configured. Falling back to heuristic parser.")
+                provider_label = "HeuristicInvoiceParser [Fallback: OPENAI_MODEL not configured]"
+                warnings.append("⚠️ Chưa cấu hình OPENAI_MODEL. Hệ thống chuyển sang Heuristic Parser — BẮT BUỘC KIỂM DUYỆT THỦ CÔNG.")
                 values, h_warnings = extract_with_heuristics(document_text, filename)
                 warnings.extend(h_warnings)
-        elif gemini_key:
-            model_name = self.gemini_model or os.environ.get("GEMINI_MODEL", "gemini-1.5-flash")
-            try:
-                values = _call_gemini_api(
-                    api_key=gemini_key,
-                    model_name=model_name,
-                    prompt=prompt,
-                    raw_bytes=effective_raw_bytes,
-                    media_type=document.source.media_type,
-                    document_text=document_text,
-                )
-                provider_label = f"Gemini-{model_name} [Vision]"
-            except Exception as exc:
-                logger.warning("Gemini extraction failed: %s. Falling back to heuristic parser.", exc)
-                warnings.append(f"Gemini API fallback: {exc}")
+            else:
+                try:
+                    values = _call_openai_api(
+                        api_key=openai_key,
+                        model_name=model_name,
+                        prompt=prompt,
+                        raw_bytes=effective_raw_bytes,
+                        media_type=document.source.media_type,
+                        document_text=document_text,
+                    )
+                    provider_label = f"OpenAI-{model_name} [Vision]"
+                except Exception as exc:
+                    logger.warning("OpenAI extraction failed: %s. Falling back to heuristic parser.", exc)
+                    provider_label = f"HeuristicInvoiceParser [Fallback: OpenAI-{model_name} failed]"
+                    warnings.append(f"⚠️ OpenAI Vision API gặp lỗi ({exc}). Hệ thống chuyển sang Heuristic Parser dự phòng — BẮT BUỘC KIỂM DUYỆT THỦ CÔNG.")
+                    values, h_warnings = extract_with_heuristics(document_text, filename)
+                    warnings.extend(h_warnings)
+        elif active_provider == "gemini" and gemini_key:
+            model_name = self.gemini_model or os.environ.get("GEMINI_MODEL")
+            if not model_name:
+                logger.warning("Gemini model not configured. Falling back to heuristic parser.")
+                provider_label = "HeuristicInvoiceParser [Fallback: GEMINI_MODEL not configured]"
+                warnings.append("⚠️ Chưa cấu hình GEMINI_MODEL. Hệ thống chuyển sang Heuristic Parser — BẮT BUỘC KIỂM DUYỆT THỦ CÔNG.")
                 values, h_warnings = extract_with_heuristics(document_text, filename)
                 warnings.extend(h_warnings)
+            else:
+                try:
+                    values = _call_gemini_api(
+                        api_key=gemini_key,
+                        model_name=model_name,
+                        prompt=prompt,
+                        raw_bytes=effective_raw_bytes,
+                        media_type=document.source.media_type,
+                        document_text=document_text,
+                    )
+                    provider_label = f"Gemini-{model_name} [Vision]"
+                except Exception as exc:
+                    logger.warning("Gemini extraction failed: %s. Falling back to heuristic parser.", exc)
+                    provider_label = f"HeuristicInvoiceParser [Fallback: Gemini-{model_name} failed]"
+                    warnings.append(f"⚠️ Gemini Vision API gặp lỗi ({exc}). Hệ thống chuyển sang Heuristic Parser dự phòng — BẮT BUỘC KIỂM DUYỆT THỦ CÔNG.")
+                    values, h_warnings = extract_with_heuristics(document_text, filename)
+                    warnings.extend(h_warnings)
         else:
             values, h_warnings = extract_with_heuristics(document_text, filename)
             warnings.extend(h_warnings)

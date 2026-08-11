@@ -39,6 +39,7 @@ class JobWorker:
         parser: PDFTextParser,
         extractor: SmartInvoiceExtractor,
         worker_id: Optional[str] = None,
+        poll_interval_seconds: float = 1.0,
         lease_seconds: int = 60,
     ) -> None:
         self.repository = repository
@@ -47,8 +48,9 @@ class JobWorker:
         self.parser = parser
         self.extractor = extractor
         self.worker_id = worker_id or f"worker-{uuid.uuid4().hex[:6]}"
+        self.poll_interval = poll_interval_seconds
         self.lease_seconds = lease_seconds
-        self._running = False
+        self._stop_event = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
     def process_job(self, job: Dict[str, Any]) -> bool:

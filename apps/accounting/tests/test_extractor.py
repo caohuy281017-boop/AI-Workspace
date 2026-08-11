@@ -231,7 +231,7 @@ class TestSmartInvoiceExtractor(unittest.TestCase):
         extractor = SmartInvoiceExtractor()
         doc = make_parsed_doc("CÔNG TY TNHH ABC\nMST: 0312345678\nSố: HD-999\nTổng cộng: 1.500.000")
         result = extractor.extract(doc, schema_name="invoice", schema_version="1.0", schema={})
-        self.assertEqual(result.provider, "HeuristicInvoiceParser")
+        self.assertTrue(result.provider.startswith("HeuristicInvoiceParser"))
         self.assertEqual(result.values["supplier_name"], "CÔNG TY TNHH ABC")
         self.assertEqual(result.values["supplier_tax_id"], "0312345678")
         self.assertEqual(result.values["invoice_number"], "HD-999")
@@ -239,11 +239,12 @@ class TestSmartInvoiceExtractor(unittest.TestCase):
 
     def test_smart_extractor_handles_openai_fallback_safely(self):
         from accounting_app.smart_extractor import SmartInvoiceExtractor
-        extractor = SmartInvoiceExtractor(openai_api_key="invalid-key-test", provider="openai")
+        extractor = SmartInvoiceExtractor(openai_api_key="invalid-key-test", provider="openai", openai_model="gpt-test-model")
         doc = make_parsed_doc("CÔNG TY ABC\nMST: 0123456789\nTổng tiền: 2.000.000")
         result = extractor.extract(doc, schema_name="invoice", schema_version="1.0", schema={})
         self.assertIsInstance(result, ExtractionResult)
         self.assertTrue(len(result.warnings) > 0)
+        self.assertTrue(result.provider.startswith("HeuristicInvoiceParser"))
         self.assertEqual(result.values["total_amount"], 2000000.0)
 
 

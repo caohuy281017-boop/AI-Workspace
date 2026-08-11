@@ -329,7 +329,7 @@ def test_vision_first_always_passes_raw_bytes_for_pdf_and_image():
     from platform_core.domain import ContentBlock, FileReference, ParsedDocument
     from unittest.mock import patch
 
-    extractor = SmartInvoiceExtractor(api_key="test-key", provider="gemini")
+    extractor = SmartInvoiceExtractor(api_key="test-key", provider="gemini", gemini_model="gemini-test-model")
     
     # 1. Clean digital PDF with perfect text layer
     pdf_source = FileReference("f1", "ws1", "digital.pdf", "application/pdf", 100, "")
