@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AI Workspace — Kho Hóa Đơn & Chứng Từ AI</title>
+  <title>AI Workspace — Business AI Platform</title>
   <meta name="description" content="AI-powered invoice search and preparation for accounting systems.">
   <link rel="stylesheet" href="styles/app.css">
 </head>
@@ -132,8 +132,8 @@
       <div class="app-grid">
         <!-- App 1: Accounting Batch -->
         <div class="app-card active-app" onclick="switchView('accounting')">
-          <div class="app-card-icon" style="background: var(--c-ok-bg);">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="1.75"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10,9 9,9 8,9"/></svg>
+          <div class="app-card-icon" style="background: var(--c-brand-dim);">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" style="color: var(--c-brand);" stroke-width="1.75"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10,9 9,9 8,9"/></svg>
           </div>
           <div class="app-card-title">Kho Hóa Đơn AI (Invoice Intelligence)</div>
           <div class="app-card-desc">Đọc, tra cứu và chuẩn bị dữ liệu hóa đơn siêu tốc bằng AI Vision. Xuất Excel chuẩn chỉnh sẵn sàng nạp vào MISA, FAST, ERP.</div>
@@ -166,34 +166,27 @@
       </div>
 
       <!-- Quick stats -->
-      <div class="section-title">Thống kê hệ thống <span>Hôm nay, 09/08/2026</span></div>
+      <div class="section-title">Thống kê hệ thống <span>(Chờ kết nối API)</span></div>
       <div class="stats-row">
         <div class="stat-box">
           <div class="stat-icon">🧾</div>
           <div>
-            <div class="stat-label">Hóa đơn đã xử lý</div>
-            <div class="stat-val text-brand">4</div>
+            <div class="stat-label">Hóa đơn đã tải lên</div>
+            <div class="stat-val text-brand" id="hub-stat-total">--</div>
           </div>
         </div>
         <div class="stat-box">
           <div class="stat-icon">⏳</div>
           <div>
-            <div class="stat-label">Chờ kiểm duyệt</div>
-            <div class="stat-val text-warn">2</div>
+            <div class="stat-label">Cần kiểm tra</div>
+            <div class="stat-val text-warn" id="hub-stat-pending">--</div>
           </div>
         </div>
         <div class="stat-box">
           <div class="stat-icon">✅</div>
           <div>
-            <div class="stat-label">Đã phê duyệt</div>
-            <div class="stat-val">2</div>
-          </div>
-        </div>
-        <div class="stat-box">
-          <div class="stat-icon">💰</div>
-          <div>
-            <div class="stat-label">Tổng tiền VND</div>
-            <div class="stat-val" style="font-size:1.1rem;">23.380.000 ₫</div>
+            <div class="stat-label">Đã xác nhận</div>
+            <div class="stat-val text-ok" id="hub-stat-approved">--</div>
           </div>
         </div>
       </div>
@@ -214,15 +207,15 @@
         <div class="stat-box">
           <div class="stat-icon">⏳</div>
           <div>
-            <div class="stat-label">Cần soi duyệt</div>
+            <div class="stat-label">Cần kiểm tra</div>
             <div class="stat-val text-warn" id="s-review">0</div>
           </div>
         </div>
         <div class="stat-box">
           <div class="stat-icon">✅</div>
           <div>
-            <div class="stat-label">Đã phê duyệt</div>
-            <div class="stat-val" id="s-approved">0</div>
+            <div class="stat-label">Đã xác nhận</div>
+            <div class="stat-val text-ok" id="s-approved">0</div>
           </div>
         </div>
         <div class="stat-box" style="cursor:pointer;" onclick="filterByType('dau_vao')">
@@ -473,7 +466,7 @@
             </select>
           </div>
           <div class="field-group" style="flex:2;">
-            <label class="field-label">Ghi chú của kế toán</label>
+            <label class="field-label">Ghi chú chứng từ</label>
             <input type="text" class="field-input" id="f-note" placeholder="Ví dụ: Đã khớp với PO-2026-001...">
           </div>
         </div>
@@ -549,7 +542,7 @@
         <!-- Audit Trail Section -->
         <hr class="divider">
         <details id="insp-audit-details" style="margin-top:10px; font-size:.8rem; cursor:pointer;">
-          <summary style="font-weight:600; color:var(--t-2);">📜 Lịch sử kiểm duyệt & Sửa đổi (Audit Trail)</summary>
+          <summary style="font-weight:600; color:var(--t-2);">📜 Lịch sử chỉnh sửa (Audit Trail)</summary>
           <div id="insp-audit-container" class="audit-timeline">
             <div style="color:var(--t-3); padding:6px 0;">Đang tải lịch sử...</div>
           </div>

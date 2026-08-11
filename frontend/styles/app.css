@@ -93,10 +93,10 @@
   --c-border:       rgba(148,163,184, 0.10);
   --c-border-hover: rgba(148,163,184, 0.22);
 
-  /* Brand slightly brighter for dark bg */
-  --c-brand:        #10B981;
-  --c-brand-hover:  #34D399;
-  --c-brand-dim:    rgba(16,185,129, 0.10);
+  /* Brand brighter for dark bg (Corporate Blue) */
+  --c-brand:        #60A5FA;
+  --c-brand-hover:  #93C5FD;
+  --c-brand-dim:    rgba(96,165,250, 0.10);
 
   /* State vocab — brighter on dark */
   --c-ok:      #10B981;
@@ -137,7 +137,7 @@
 }
 
 /* ── Browser surfaces: themed scrollbar & selection ── */
-::selection { background: rgba(16,185,129,0.22); color: var(--t-1); }
+::selection { background: var(--c-brand-dim); color: var(--t-1); }
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 3px; }

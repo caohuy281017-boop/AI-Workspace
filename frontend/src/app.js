@@ -157,7 +157,7 @@ function recalcStats() {
   setText('badge-review',   review.length > 0 ? review.length : '');
 
   const exportLabel = document.getElementById('export-bar-label');
-  if (exportLabel) exportLabel.textContent = `${approved.length} hóa đơn đã duyệt sẵn sàng xuất Excel`;
+  if (exportLabel) exportLabel.textContent = `${approved.length} hóa đơn đã xác nhận sẵn sàng xuất Excel`;
 }
 
 function setText(id, val) {
@@ -250,7 +250,7 @@ function renderStatusBadge(inv) {
   const vs = inv.validation_status;
 
   if (st === 'approved') {
-    return `<span class="badge badge-ok" aria-label="Trạng thái: Đã duyệt"><span class="badge-dot"></span>Đã duyệt</span>`;
+    return `<span class="badge badge-ok" aria-label="Trạng thái: Đã xác nhận"><span class="badge-dot"></span>Đã xác nhận</span>`;
   }
   if (st === 'failed') {
     return `<span class="badge badge-error" aria-label="Trạng thái: Thất bại"><span class="badge-dot"></span>Thất bại</span>`;
@@ -277,7 +277,7 @@ function renderStatusBadge(inv) {
   if (vs === 'warning' || (inv.warnings && inv.warnings.length)) {
     return `<span class="badge badge-warn" title="Có cảnh báo số liệu cần kiểm tra" aria-label="Trạng thái: Cảnh báo"><span class="badge-dot"></span>Cần kiểm tra</span>`;
   }
-  return `<span class="badge badge-info" aria-label="Trạng thái: Chờ duyệt"><span class="badge-dot"></span>Chờ duyệt</span>`;
+  return `<span class="badge badge-info" aria-label="Trạng thái: Chờ kiểm tra"><span class="badge-dot"></span>Chờ kiểm tra</span>`;
 }
 
 // ── Backend API Calls ──────────────────────────────────
@@ -1027,6 +1027,78 @@ function closeInspector() {
 }
 
 async function saveInspector() {
+  if (!STATE.inspecting) return;
+  const inv = STATE.inspecting;
+  const e = inv.ext;
+  
+  e.supplier = document.getElementById('f-supplier')?.value || '';
+  e.tax = document.getElementById('f-tax-id')?.value || '';
+  e.num = document.getElementById('f-inv-num')?.value || '';
+  e.date = document.getElementById('f-inv-date')?.value || '';
+  e.currency = document.getElementById('f-currency')?.value || '';
+  e.sub = parseFloat(document.getElementById('f-subtotal')?.value) || 0;
+  e.vat = parseFloat(document.getElementById('f-vat')?.value) || 0;
+  e.total = parseFloat(document.getElementById('f-total')?.value) || 0;
+  
+  e.items = [];
+  document.querySelectorAll('#line-items-list .line-item-row').forEach(r => {
+    e.items.push({
+      description: r.querySelector('.item-desc')?.value || '',
+      quantity: parseFloat(r.querySelector('.item-qty')?.value) || 1,
+      unit_price: parseFloat(r.querySelector('.item-price')?.value) || 0,
+      amount: parseFloat(r.querySelector('.item-amt')?.value) || 0
+    });
+  });
+
+  inv.invoice_type = document.getElementById('f-invoice-type')?.value || 'dau_vao';
+  inv.note = document.getElementById('f-note')?.value || '';
+
+  const issues = (inv.validation_errors || []).concat((inv.warnings || []).map(w => ({message: w, severity: 'warning'})));
+  if (issues.length > 0) {
+    document.getElementById('override-modal').classList.add('open');
+    return;
+  }
+
+  await proceedWithApproval(inv.batch_id, inv.id, null);
+}
+
+async function proceedWithApproval(batchId, id, overrideReason) {
+  const inv = STATE.invoices.find(i => i.id === id);
+  if (!inv) return;
+  
+  const payload = { 
+    status: 'approved',
+    ext: inv.ext,
+    invoice_type: inv.invoice_type,
+    note: inv.note
+  };
+  if (overrideReason) { payload.override_reason = overrideReason; }
+  
+  const ok = await window.StateSync.updateInvoiceStatus(id, 'approved', payload, () => updateInvoiceOnBackend(batchId, id, payload));
+  if (ok) {
+    closeInspector();
+    closeOverrideModal();
+    recalcStats();
+    renderTable();
+  } else {
+    alert("Không thể lưu và xác nhận hóa đơn. Vui lòng thử lại.");
+  }
+}
+
+function closeOverrideModal() {
+  document.getElementById('override-modal')?.classList.remove('open');
+}
+
+function confirmOverride() {
+  const reason = document.getElementById('override-reason-input')?.value?.trim();
+  if (!reason) {
+    alert("Vui lòng ghi chú lý do xác nhận.");
+    return;
+  }
+  const inv = STATE.inspecting;
+  if (!inv) return;
+  proceedWithApproval(inv.batch_id, inv.id, reason);
+}
 function selectAiProvider(provider, silent) {
   localStorage.setItem('AI_PROVIDER', provider);
   updateAiEngineCards(provider);

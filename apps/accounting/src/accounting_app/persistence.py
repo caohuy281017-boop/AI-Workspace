@@ -59,7 +59,13 @@ class SQLiteInvoiceRepository:
                 continue
             with closing(self._get_connection()) as conn:
                 for stmt in sql_statements:
-                    conn.execute(stmt)
+                    try:
+                        conn.execute(stmt)
+                    except sqlite3.OperationalError as e:
+                        if "duplicate column name" in str(e).lower():
+                            pass
+                        else:
+                            raise
                 conn.execute(
                     "INSERT INTO db_migrations (version, applied_at, description) VALUES (?, ?, ?)",
                     (version, datetime.utcnow().isoformat(), description),
@@ -162,6 +168,8 @@ class SQLiteInvoiceRepository:
                 "003",
                 "Backfill workspace/user indexes on invoice_items and batches",
                 [
+                    "ALTER TABLE invoice_items ADD COLUMN workspace_id TEXT NOT NULL DEFAULT 'default-ws';",
+                    "ALTER TABLE batches ADD COLUMN workspace_id TEXT NOT NULL DEFAULT 'default-ws';",
                     "CREATE INDEX IF NOT EXISTS idx_invoice_items_workspace ON invoice_items(workspace_id);",
                     "CREATE INDEX IF NOT EXISTS idx_batches_workspace ON batches(workspace_id);",
                 ],
