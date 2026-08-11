@@ -55,17 +55,25 @@ VALID_INVOICE_TYPES = {"dau_vao", "dau_ra", "khac"}
 class InvoiceItemUpdateSchema(BaseModel):
     supplier_name: str | None = None
     supplier_tax_id: str | None = None
+    buyer_name: str | None = None
+    buyer_tax_id: str | None = None
+    invoice_template_number: str | None = None
+    invoice_series: str | None = None
     invoice_number: str | None = None
     invoice_date: str | None = None
     currency: str | None = None
     subtotal: float | None = None
+    discount_amount: float | None = None
+    fees: float | None = None
     tax_amount: float | None = None
     total_amount: float | None = None
+    tax_breakdown: list[dict[str, Any]] | None = None
     items: list[dict[str, Any]] | None = None
     custom_fields: dict[str, Any] | None = None
     status: str | None = None
     invoice_type: str | None = None
     note: str | None = None
+    override_reason: str | None = None
 
     @field_validator("status")
     @classmethod
@@ -289,6 +297,14 @@ def create_app(
         if not updated:
             raise HTTPException(status_code=404, detail="Invoice item or batch not found.")
         return updated
+
+    @app.get("/api/v1/accounting/batches/{batch_id}/items/{file_id}/audit-logs")
+    async def get_item_audit_logs(batch_id: str, file_id: str):
+        item = repository.get_item(file_id)
+        if not item or item.get("batch_id") != batch_id:
+            raise HTTPException(status_code=404, detail="Invoice item or batch not found.")
+        logs = repository.list_audit_logs(entity_id=file_id, entity_type="invoice_item")
+        return {"audit_logs": logs}
 
     @app.delete("/api/v1/accounting/batches/{batch_id}/items/{file_id}", status_code=204)
     async def delete_item(batch_id: str, file_id: str):

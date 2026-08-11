@@ -8,10 +8,13 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import uuid
 from contextlib import closing
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from datetime import datetime
+
+from accounting_app.validator import validate_invoice
 
 
 class SQLiteInvoiceRepository:
@@ -161,6 +164,27 @@ class SQLiteInvoiceRepository:
                 [
                     "CREATE INDEX IF NOT EXISTS idx_invoice_items_workspace ON invoice_items(workspace_id);",
                     "CREATE INDEX IF NOT EXISTS idx_batches_workspace ON batches(workspace_id);",
+                ],
+            ),
+            (
+                "004",
+                "Add audit_logs table for tracking manual review changes and overrides",
+                [
+                    """
+                    CREATE TABLE IF NOT EXISTS audit_logs (
+                        log_id              TEXT PRIMARY KEY,
+                        workspace_id        TEXT NOT NULL DEFAULT 'default-ws',
+                        entity_type         TEXT NOT NULL,
+                        entity_id           TEXT NOT NULL,
+                        action              TEXT NOT NULL,
+                        user_id             TEXT,
+                        changes_json        TEXT NOT NULL,
+                        reason              TEXT,
+                        created_at          TEXT NOT NULL
+                    );
+                    """,
+                    "CREATE INDEX IF NOT EXISTS idx_audit_entity ON audit_logs(entity_type, entity_id);",
+                    "CREATE INDEX IF NOT EXISTS idx_audit_workspace ON audit_logs(workspace_id);",
                 ],
             ),
         ]
@@ -556,45 +580,128 @@ class SQLiteInvoiceRepository:
             return {
                 "file_id": row["file_id"],
                 "batch_id": row["batch_id"],
+                "workspace_id": row["workspace_id"] if "workspace_id" in row.keys() else "default-ws",
                 "file_name": row["file_name"],
                 "media_type": row["media_type"],
                 "size_bytes": row["size_bytes"],
                 "storage_uri": row["storage_uri"],
                 "status": row["status"],
+                "invoice_type": row["invoice_type"] if "invoice_type" in row.keys() else "dau_vao",
+                "note": row["note"] if "note" in row.keys() else "",
                 "extraction": json.loads(row["extraction_json"] or "{}"),
                 "warnings": json.loads(row["warnings_json"] or "[]"),
                 "errors": json.loads(row["errors_json"] or "[]"),
+                "validation_status": row["validation_status"] if "validation_status" in row.keys() else "pending",
+                "validation_errors": json.loads(row["validation_errors_json"] or "[]") if "validation_errors_json" in row.keys() else [],
             }
 
-    def update_item(self, batch_id: str, file_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    def update_item(
+        self,
+        batch_id: str,
+        file_id: str,
+        updates: Dict[str, Any],
+        user_id: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
         with closing(self._get_connection()) as conn:
-            item_row = conn.execute("SELECT * FROM invoice_items WHERE file_id = ? AND batch_id = ?", (file_id, batch_id)).fetchone()
+            item_row = conn.execute(
+                "SELECT * FROM invoice_items WHERE file_id = ? AND batch_id = ?",
+                (file_id, batch_id),
+            ).fetchone()
             if not item_row:
                 return None
 
             current_extraction = json.loads(item_row["extraction_json"] or "{}")
-            new_status = updates.get("status", item_row["status"])
+            old_status = item_row["status"]
+            old_invoice_type = item_row["invoice_type"] if "invoice_type" in item_row.keys() else "dau_vao"
+            old_note = item_row["note"] if "note" in item_row.keys() else ""
+            workspace_id = item_row["workspace_id"] if "workspace_id" in item_row.keys() else "default-ws"
 
-            # invoice_type and note are first-class columns; don't embed in extraction JSON
-            FIRST_CLASS = {"status", "invoice_type", "note"}
-            new_invoice_type = updates.get("invoice_type", item_row["invoice_type"] if "invoice_type" in item_row.keys() else "dau_vao")
-            new_note = updates.get("note", item_row["note"] if "note" in item_row.keys() else "")
+            new_status = updates.get("status", old_status)
+            new_invoice_type = updates.get("invoice_type", old_invoice_type)
+            new_note = updates.get("note", old_note)
+            override_reason = updates.get("override_reason")
 
-            # Apply field updates to extraction dictionary (skip first-class fields)
+            # Track changes for audit log
+            changes: Dict[str, Any] = {}
+            if new_status != old_status:
+                changes["status"] = {"old": old_status, "new": new_status}
+            if new_invoice_type != old_invoice_type:
+                changes["invoice_type"] = {"old": old_invoice_type, "new": new_invoice_type}
+            if new_note != old_note:
+                changes["note"] = {"old": old_note, "new": new_note}
+
+            FIRST_CLASS = {"status", "invoice_type", "note", "override_reason"}
+
+            # Apply field updates to extraction dictionary and record changes
             for k, v in updates.items():
                 if k not in FIRST_CLASS and v is not None:
-                    current_extraction[k] = v
+                    old_v = current_extraction.get(k)
+                    if old_v != v:
+                        changes[f"extraction.{k}"] = {"old": old_v, "new": v}
+                        current_extraction[k] = v
+
+            # Re-run validation on updated extraction data
+            def _dup_checker(mst, series, number, inv_date):
+                return self.check_duplicate(
+                    supplier_tax_id=mst,
+                    invoice_series=series,
+                    invoice_number=number,
+                    invoice_date=inv_date,
+                    exclude_file_id=file_id,
+                )
+
+            val_issues = validate_invoice(current_extraction, duplicate_checker=_dup_checker)
+            val_errors = [i.to_dict() for i in val_issues if i.severity == "error"]
+            val_warnings = [i.to_dict() for i in val_issues if i.severity in ("warning", "info")]
+            validation_status = "error" if val_errors else ("warning" if val_warnings else "ok")
+            all_val_issues = val_errors + val_warnings
 
             now = datetime.now().isoformat()
+
+            # Execute update and audit log in the same transaction
             conn.execute("""
                 UPDATE invoice_items
-                SET status = ?, extraction_json = ?, invoice_type = ?, note = ?, updated_at = ?
+                SET status = ?, extraction_json = ?, invoice_type = ?, note = ?,
+                    validation_status = ?, validation_errors_json = ?, updated_at = ?
                 WHERE file_id = ? AND batch_id = ?
-            """, (new_status, json.dumps(current_extraction), new_invoice_type, new_note, now, file_id, batch_id))
+            """, (
+                new_status,
+                json.dumps(current_extraction),
+                new_invoice_type,
+                new_note,
+                validation_status,
+                json.dumps(all_val_issues),
+                now,
+                file_id,
+                batch_id,
+            ))
+
+            if changes or override_reason:
+                log_id = f"audit-{uuid.uuid4().hex[:12]}"
+                action = "override" if (override_reason or (old_status != "approved" and new_status == "approved" and val_errors)) else "update"
+                conn.execute("""
+                    INSERT INTO audit_logs (
+                        log_id, workspace_id, entity_type, entity_id, action,
+                        user_id, changes_json, reason, created_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    log_id,
+                    workspace_id,
+                    "invoice_item",
+                    file_id,
+                    action,
+                    user_id,
+                    json.dumps(changes),
+                    override_reason,
+                    now,
+                ))
+
             conn.commit()
 
             return {
                 "file_id": file_id,
+                "batch_id": batch_id,
+                "workspace_id": workspace_id,
                 "file_name": item_row["file_name"],
                 "storage_uri": item_row["storage_uri"],
                 "status": new_status,
@@ -603,5 +710,42 @@ class SQLiteInvoiceRepository:
                 "extraction": current_extraction,
                 "warnings": json.loads(item_row["warnings_json"] or "[]"),
                 "errors": json.loads(item_row["errors_json"] or "[]"),
+                "validation_status": validation_status,
+                "validation_errors": all_val_issues,
             }
+
+    def list_audit_logs(
+        self,
+        entity_id: Optional[str] = None,
+        entity_type: Optional[str] = None,
+        workspace_id: str = "default-ws",
+        limit: int = 100,
+    ) -> List[Dict[str, Any]]:
+        with closing(self._get_connection()) as conn:
+            query = "SELECT * FROM audit_logs WHERE workspace_id = ?"
+            params: list[Any] = [workspace_id]
+            if entity_id:
+                query += " AND entity_id = ?"
+                params.append(entity_id)
+            if entity_type:
+                query += " AND entity_type = ?"
+                params.append(entity_type)
+            query += " ORDER BY created_at DESC LIMIT ?"
+            params.append(limit)
+
+            rows = conn.execute(query, tuple(params)).fetchall()
+            return [
+                {
+                    "log_id": r["log_id"],
+                    "workspace_id": r["workspace_id"],
+                    "entity_type": r["entity_type"],
+                    "entity_id": r["entity_id"],
+                    "action": r["action"],
+                    "user_id": r["user_id"],
+                    "changes": json.loads(r["changes_json"] or "{}"),
+                    "reason": r["reason"],
+                    "created_at": r["created_at"],
+                }
+                for r in rows
+            ]
 
