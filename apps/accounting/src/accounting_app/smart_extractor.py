@@ -24,6 +24,7 @@ from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 from platform_core.domain import ExtractionResult, ParsedDocument
 from accounting_app.schema import INVOICE_SCHEMA_V2 as INVOICE_SCHEMA_V1, SCHEMA_VERSION
+from accounting_app.router import assess_text_quality, DocumentRoutingDecision
 
 logger = logging.getLogger(__name__)
 
@@ -631,6 +632,20 @@ class SmartInvoiceExtractor:
         Return ONLY valid JSON.
         """
 
+        # ── Document Routing Decision (Lát 5) ────────────────────
+        routing = assess_text_quality(
+            text=document_text,
+            media_type=document.source.media_type,
+            filename=filename,
+        )
+        logger.info(
+            "Document %s routed to %s (quality score: %.2f, reason: %s)",
+            filename, routing.mode, routing.text_quality_score, routing.reason,
+        )
+
+        # For text_only mode: do not attach raw bytes to save tokens/bandwidth
+        effective_raw_bytes = raw_bytes if routing.mode == "multimodal_vision" else None
+
         if active_provider == "openai" and openai_key:
             model_name = self.openai_model or os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
             try:
@@ -638,11 +653,11 @@ class SmartInvoiceExtractor:
                     api_key=openai_key,
                     model_name=model_name,
                     prompt=prompt,
-                    raw_bytes=raw_bytes,
+                    raw_bytes=effective_raw_bytes,
                     media_type=document.source.media_type,
                     document_text=document_text,
                 )
-                provider_label = f"OpenAI-{model_name}"
+                provider_label = f"OpenAI-{model_name} [{routing.mode}]"
             except Exception as exc:
                 logger.warning("OpenAI extraction failed: %s. Falling back to heuristic parser.", exc)
                 warnings.append(f"OpenAI API fallback: {exc}")
@@ -655,11 +670,11 @@ class SmartInvoiceExtractor:
                     api_key=gemini_key,
                     model_name=model_name,
                     prompt=prompt,
-                    raw_bytes=raw_bytes,
+                    raw_bytes=effective_raw_bytes,
                     media_type=document.source.media_type,
                     document_text=document_text,
                 )
-                provider_label = f"Gemini-{model_name}"
+                provider_label = f"Gemini-{model_name} [{routing.mode}]"
             except Exception as exc:
                 logger.warning("Gemini extraction failed: %s. Falling back to heuristic parser.", exc)
                 warnings.append(f"Gemini API fallback: {exc}")
@@ -678,6 +693,7 @@ class SmartInvoiceExtractor:
             schema_version=schema_version,
             values=values,
             provider=provider_label,
+            field_confidence={"text_quality_score": routing.text_quality_score},
             warnings=tuple(warnings),
         )
 
