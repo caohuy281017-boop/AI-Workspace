@@ -9,6 +9,7 @@ description = "Replaceable parser, LLM and export adapters for File-First AI Wor
 requires-python = ">=3.11"
 dependencies = [
     "platform-core",
+    "firecrawl-anydoc==0.1.8",
     "openpyxl>=3.1",
 ]
 

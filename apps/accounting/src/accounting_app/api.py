@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -15,8 +16,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, field_validator
+from starlette.concurrency import run_in_threadpool
 
 from platform_adapters.exporters.xlsx_exporter import XLSXExportAdapter
+from platform_adapters.parsers.anydoc_parser import (
+    AnydocTextExtractor,
+    DocumentTextExtractionError,
+    UnsupportedDocumentTypeError,
+)
 
 from accounting_app.job_worker import JobWorker
 from accounting_app.pdf_parser import PDFTextParser
@@ -29,6 +36,8 @@ DEFAULT_DATA_DIR = WORKSPACE_ROOT / "apps" / "accounting" / "data"
 DEFAULT_STORAGE_DIR = DEFAULT_DATA_DIR / "storage"
 MAX_BATCH_FILES = 20
 MAX_FILE_BYTES = 20 * 1024 * 1024
+MAX_DOCUMENT_TOOL_BYTES = 20 * 1024 * 1024
+MAX_DOCUMENT_TOOL_CONCURRENCY = 4
 ALLOWED_MEDIA_TYPES = {
     "application/pdf": {".pdf"},
     "image/png": {".png"},
@@ -226,6 +235,41 @@ def create_app(
         allowed_media_types=ALLOWED_MEDIA_TYPES,
         max_file_bytes=MAX_FILE_BYTES,
     )
+    document_text_extractor = AnydocTextExtractor()
+    document_tool_slots = asyncio.Semaphore(MAX_DOCUMENT_TOOL_CONCURRENCY)
+
+    @app.post("/api/v1/tools/extract-text")
+    async def extract_document_text(response: Response, file: UploadFile = File(...)):
+        """Extract Markdown without adding the source document to application storage."""
+        filename = file.filename or "document"
+        async with document_tool_slots:
+            content = await file.read(MAX_DOCUMENT_TOOL_BYTES + 1)
+            if len(content) > MAX_DOCUMENT_TOOL_BYTES:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail="Tài liệu vượt quá giới hạn 20 MB.",
+                )
+            try:
+                extracted = await run_in_threadpool(
+                    document_text_extractor.extract,
+                    content,
+                    filename,
+                )
+            except UnsupportedDocumentTypeError as exc:
+                raise HTTPException(status_code=415, detail=str(exc)) from exc
+            except DocumentTextExtractionError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            except RuntimeError as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+        response.headers["Cache-Control"] = "no-store"
+        return {
+            "file_name": sanitize_upload_name(filename),
+            "content": extracted.content,
+            "format": extracted.source_format,
+            "engine": extracted.engine,
+            "stored": False,
+        }
 
     @app.get("/api/v1/accounting/batches")
     async def list_batches(search: str | None = None, invoice_type: str | None = None):

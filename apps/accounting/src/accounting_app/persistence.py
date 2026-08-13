@@ -72,6 +72,14 @@ class SQLiteInvoiceRepository:
                 )
                 conn.commit()
 
+        # Some databases predate the migration framework and may already have
+        # migration markers even though their original tables lack newer
+        # columns. Repair the physical schema based on PRAGMA inspection rather
+        # than trusting metadata alone. This is additive and preserves data.
+        with closing(self._get_connection()) as conn:
+            self._ensure_legacy_columns(conn)
+            conn.commit()
+
     @staticmethod
     def _get_migrations() -> list[tuple[str, str, list[str]]]:
         """Return ordered list of (version, description, [sql_statements]).
@@ -1056,4 +1064,3 @@ class SQLiteInvoiceRepository:
             "started_at": row["started_at"],
             "completed_at": row["completed_at"],
         }
-

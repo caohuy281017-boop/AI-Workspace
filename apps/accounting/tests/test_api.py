@@ -20,6 +20,12 @@ from accounting_app.api import create_app
 from accounting_app.persistence import SQLiteInvoiceRepository
 
 
+WORKSPACE_ROOT = Path(__file__).resolve().parents[3]
+DOCUMENT_SAMPLES = (
+    WORKSPACE_ROOT / "packages" / "platform-adapters" / "tests" / "samples" / "generated"
+)
+
+
 class TestAccountingBatchAPI(unittest.TestCase):
 
     def setUp(self):
@@ -32,6 +38,46 @@ class TestAccountingBatchAPI(unittest.TestCase):
     def tearDown(self):
         self.client.close()
         self.temp_dir.cleanup()
+
+    def test_document_tool_extracts_docx_without_storing_it(self):
+        sample = DOCUMENT_SAMPLES / "invoice.docx"
+        response = self.client.post(
+            "/api/v1/tools/extract-text",
+            files={
+                "file": (
+                    sample.name,
+                    sample.read_bytes(),
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                )
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("SAMPLE-001", payload["content"])
+        self.assertEqual(payload["format"], "docx")
+        self.assertEqual(payload["engine"], "anydoc")
+        self.assertFalse(payload["stored"])
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        self.assertEqual(list((Path(self.temp_dir.name) / "storage").glob("**/*")), [])
+
+    def test_document_tool_rejects_unsupported_file_type(self):
+        response = self.client.post(
+            "/api/v1/tools/extract-text",
+            files={"file": ("scan.png", b"not-an-image", "image/png")},
+        )
+
+        self.assertEqual(response.status_code, 415)
+        self.assertIn("chưa được hỗ trợ", response.json()["detail"])
+
+    def test_document_tool_reports_unreadable_document_inline(self):
+        response = self.client.post(
+            "/api/v1/tools/extract-text",
+            files={"file": ("broken.docx", b"broken", "application/octet-stream")},
+        )
+
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("Không đọc được tài liệu", response.json()["detail"])
 
     def test_batch_upload_creates_batch(self):
         file1 = ("invoice1.pdf", b"%PDF-1.4 fake pdf content 1", "application/pdf")
@@ -245,4 +291,3 @@ class TestAccountingBatchAPI(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

@@ -77,7 +77,7 @@ function toggleTheme() {
 
 // ── State ──────────────────────────────────────────────
 const STATE = {
-  view: 'hub',
+  view: 'tools',
   filter: 'all',
   filterType: 'all',  // 'all' | 'dau_vao' | 'dau_ra' | 'khac'
   query: '',
@@ -90,6 +90,7 @@ const STATE = {
 // ── Apps directory ─────────────────────────────────────
 const APPS = [
   { id:'hub',         icon:'🏠', title:'Trang chủ',                  desc:'Hub tổng quan tất cả công cụ' },
+  { id:'tools',       icon:'▦', title:'Công cụ miễn phí',            desc:'Xử lý văn bản và trích xuất nội dung tài liệu Office/PDF' },
   { id:'accounting',  icon:'🧾', title:'Kho Hóa Đơn AI',             desc:'Invoice Intelligence & Excel Export' },
   { id:'translator',  icon:'📄', title:'Dịch tài liệu',              desc:'PDF/DOCX/PPTX translation with layout preserved' },
   { id:'meeting',     icon:'🎙️', title:'Biên bản Cuộc họp',          desc:'Audio → Transcript, Summary, Action Items' },
@@ -197,7 +198,11 @@ function renderTable() {
   });
 
   if (list.length === 0) {
-    tbody.innerHTML = `<tr><td colspan="8" style="text-align:center;padding:32px;color:var(--t-3);">Không tìm thấy hóa đơn nào. Tải lên file PDF/ảnh để bắt đầu.</td></tr>`;
+    const colCount = document.querySelectorAll('.data-table thead th').length || 8;
+    const hasInvoices = STATE.invoices.length > 0;
+    tbody.innerHTML = hasInvoices
+      ? `<tr><td colspan="${colCount}"><div class="empty-state"><div class="empty-state-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg></div><h4>Không tìm thấy kết quả</h4><p>Thử thay đổi bộ lọc hoặc từ khóa tìm kiếm.</p></div></td></tr>`
+      : `<tr><td colspan="${colCount}"><div class="empty-state"><div class="empty-state-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/></svg></div><h4>Chưa có hóa đơn nào</h4><p>Kéo thả PDF hoặc ảnh, hoặc chọn file từ máy tính để bắt đầu.</p><button class="btn btn-primary btn-sm" onclick="document.getElementById('btn-upload').click()">Tải lên hóa đơn đầu tiên</button></div></td></tr>`;
     return;
   }
 
@@ -353,10 +358,64 @@ async function loadBatchesFromBackend() {
 
 async function uploadRealFiles(files) {
   if (!files || !files.length) return;
+  const filesArr = Array.from(files);
+  const maxBatchFiles = 20;
+  const maxFileBytes = 20 * 1024 * 1024;
+  const allowedExtension = /\.(pdf|png|jpe?g|tiff?)$/i;
+  const uploadStatus = document.getElementById('upload-status-msg');
+  const uploadStatusText = document.getElementById('upload-status-text');
+  const uploadList = document.getElementById('upload-file-list');
+  const uploadButton = document.getElementById('btn-upload');
+  const setUploadStatus = (message, isError = false) => {
+    uploadStatus?.classList.toggle('visible', Boolean(message));
+    uploadStatus?.classList.toggle('error', Boolean(message) && isError);
+    if (uploadStatusText && message) uploadStatusText.textContent = message;
+  };
+  const renderUploadFiles = (stage, returnedItems = []) => {
+    if (!uploadList) return;
+    const itemByName = new Map(returnedItems.map(item => [item.file_name, item]));
+    uploadList.innerHTML = filesArr.map(file => {
+      const returned = itemByName.get(file.name);
+      let effectiveStage = stage;
+      let label = stage === 'loading' ? 'Đang xử lý' : stage === 'error' ? 'Lỗi' : 'Đã chọn';
+      if (stage === 'done') {
+        const status = returned?.status;
+        const failed = ['failed', 'provider_error', 'interrupted'].includes(status);
+        effectiveStage = failed ? 'error' : 'done';
+        label = failed ? 'Lỗi xử lý' : 'Đã nhận kết quả';
+      }
+      return `<div class="upload-file-item"><span class="upload-file-item-icon"><svg xmlns="http://www.w3.org/2000/svg" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/></svg></span><span class="upload-file-item-name" title="${escapeHtml(file.name)}">${escapeHtml(file.name)}</span><span class="upload-file-item-size">${(file.size / 1024 / 1024).toFixed(1)} MB</span><span class="upload-file-item-status ${effectiveStage}">${label}</span></div>`;
+    }).join('');
+    uploadList.classList.add('visible');
+  };
 
-  const dropZoneText = document.querySelector('#drop-zone h3');
-  const originalText = dropZoneText ? dropZoneText.textContent : 'Kéo thả lô file Hóa đơn vào đây';
-  if (dropZoneText) dropZoneText.textContent = '⏳ AI đang đọc & trích xuất hóa đơn...';
+  if (uploadRealFiles.inProgress) {
+    setUploadStatus('Một lượt hóa đơn đang được xử lý. Vui lòng chờ hoàn tất.', true);
+    return;
+  }
+  if (filesArr.length > maxBatchFiles) {
+    renderUploadFiles('error');
+    setUploadStatus(`Mỗi lượt chỉ nhận tối đa ${maxBatchFiles} file.`, true);
+    return;
+  }
+  const unsupported = filesArr.find(file => !allowedExtension.test(file.name));
+  if (unsupported) {
+    renderUploadFiles('error');
+    setUploadStatus(`File “${unsupported.name}” không đúng định dạng PDF, PNG, JPG hoặc TIFF.`, true);
+    return;
+  }
+  const oversized = filesArr.find(file => file.size > maxFileBytes);
+  if (oversized) {
+    renderUploadFiles('error');
+    setUploadStatus(`File “${oversized.name}” vượt quá giới hạn 20 MB.`, true);
+    return;
+  }
+
+  uploadRealFiles.inProgress = true;
+  if (uploadButton) uploadButton.disabled = true;
+  renderUploadFiles('queued');
+  setUploadStatus('Đang tải lên và xử lý bằng AI...');
+  renderUploadFiles('loading');
 
   const formData = new FormData();
   for (let i = 0; i < files.length; i++) {
@@ -376,6 +435,7 @@ async function uploadRealFiles(files) {
     headers['X-OpenAI-API-Key'] = openaiKey;
   }
 
+  let uploadSucceeded = false;
   try {
     const res = await fetch(`${API_BASE}/api/v1/accounting/batches`, {
       method: 'POST',
@@ -383,7 +443,10 @@ async function uploadRealFiles(files) {
       body: formData
     });
 
-    if (!res.ok) throw new Error(`Upload failed: ${res.statusText}`);
+    if (!res.ok) {
+      const errorPayload = await res.json().catch(() => ({}));
+      throw new Error(errorPayload.detail || `Máy chủ trả về lỗi ${res.status}.`);
+    }
     const batch = await res.json();
     STATE.currentBatchId = batch.batch_id;
 
@@ -424,10 +487,16 @@ async function uploadRealFiles(files) {
 
     recalcStats();
     renderTable();
+    renderUploadFiles('done', batch.items || []);
+    window.setTimeout(() => uploadList?.classList.remove('visible'), 4000);
+    uploadSucceeded = true;
   } catch (err) {
-    alert("Không thể tải hóa đơn lên backend API: " + err.message);
+    renderUploadFiles('error');
+    setUploadStatus(`Không thể xử lý hóa đơn: ${err.message}`, true);
   } finally {
-    if (dropZoneText) dropZoneText.textContent = originalText;
+    uploadRealFiles.inProgress = false;
+    if (uploadButton) uploadButton.disabled = false;
+    if (uploadSucceeded) setUploadStatus(null);
   }
 }
 
@@ -1357,13 +1426,13 @@ function renderSearchResults(q) {
   }
 
   container.innerHTML = filtered.map((a, idx) => `
-    <div class="modal-result-item${idx === searchFocusIdx ? ' focused' : ''}" onclick="switchView('${escapeHtml(a.id)}')">
+    <button type="button" class="modal-result-item${idx === searchFocusIdx ? ' focused' : ''}" onclick="switchView('${escapeHtml(a.id)}'); closeSearch()">
       <span class="mri-icon">${escapeHtml(a.icon)}</span>
       <div>
         <div class="mri-title">${escapeHtml(a.title)}</div>
         <div class="mri-sub">${escapeHtml(a.desc)}</div>
       </div>
-    </div>
+    </button>
   `).join('');
 }
 
@@ -1419,7 +1488,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const fileInput = document.createElement('input');
   fileInput.type = 'file';
   fileInput.multiple = true;
-  fileInput.accept = '.pdf,.png,.jpg,.jpeg,.tiff';
+  fileInput.accept = '.pdf,.png,.jpg,.jpeg,.tif,.tiff';
   fileInput.id = 'file-input-hidden';
   fileInput.style.display = 'none';
   document.body.appendChild(fileInput);
@@ -1427,11 +1496,15 @@ document.addEventListener('DOMContentLoaded', () => {
   fileInput.addEventListener('change', e => {
     if (e.target.files && e.target.files.length) {
       uploadRealFiles(e.target.files);
+      e.target.value = '';
     }
   });
 
   const dz = document.getElementById('drop-zone');
   if (dz) {
+    dz.addEventListener('click', e => {
+      if (!e.target.closest('button')) fileInput.click();
+    });
     dz.addEventListener('dragover', e => { e.preventDefault(); dz.classList.add('over'); });
     dz.addEventListener('dragleave', () => dz.classList.remove('over'));
     dz.addEventListener('drop', e => {

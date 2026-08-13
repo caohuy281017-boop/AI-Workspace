@@ -1,10 +1,66 @@
 """Tests for real Accounting Batch components."""
 
+import sqlite3
+
 import pytest
 from platform_core.domain import FileReference
 from accounting_app.pdf_parser import PDFTextParser
 from accounting_app.smart_extractor import extract_with_heuristics, SmartInvoiceExtractor
 from accounting_app.persistence import SQLiteInvoiceRepository
+
+
+def test_repository_repairs_legacy_invoice_table_even_when_migrations_are_marked_applied(tmp_path):
+    """A pre-migration database may have migration metadata but an old table shape."""
+    db_path = tmp_path / "legacy.db"
+    with sqlite3.connect(db_path) as conn:
+        conn.executescript("""
+            CREATE TABLE db_migrations (
+                version TEXT PRIMARY KEY,
+                applied_at TEXT NOT NULL,
+                description TEXT NOT NULL
+            );
+            CREATE TABLE batches (
+                batch_id TEXT PRIMARY KEY,
+                created_at TEXT NOT NULL
+            );
+            CREATE TABLE invoice_items (
+                file_id TEXT PRIMARY KEY,
+                batch_id TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                media_type TEXT,
+                size_bytes INTEGER,
+                status TEXT NOT NULL,
+                extraction_json TEXT NOT NULL,
+                warnings_json TEXT,
+                errors_json TEXT,
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE custom_fields (
+                code TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                field_type TEXT NOT NULL,
+                llm_prompt TEXT NOT NULL DEFAULT '',
+                visible_in_list INTEGER NOT NULL DEFAULT 0,
+                visible_in_analysis INTEGER NOT NULL DEFAULT 1,
+                is_required INTEGER NOT NULL DEFAULT 0,
+                display_order INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            INSERT INTO db_migrations VALUES ('001', '2026-01-01', 'legacy marker');
+        """)
+
+    repo = SQLiteInvoiceRepository(str(db_path))
+    saved = repo.save_batch("legacy-batch", [{
+        "file_id": "legacy-file",
+        "file_name": "invoice.pdf",
+        "status": "needs_review",
+        "extraction": {},
+        "validation_status": "pending",
+        "validation_errors": [],
+    }])
+
+    assert saved["items"][0]["validation_status"] == "pending"
 from accounting_app.schema import INVOICE_SCHEMA_V1, SCHEMA_VERSION
 
 
